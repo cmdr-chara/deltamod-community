@@ -1,8 +1,14 @@
 function purifyDescription(desc) {
-    var final = desc;
-    final = desc.replace(/\n/g, ' ').substring(0, 100);
-    if (desc.length > 100) final += '...';
-    return final;
+    if (desc === null || desc === undefined) return '';
+    let text = String(desc);
+    // Remove any HTML tags first
+    text = purify(text);
+    // Normalize whitespace/newlines to single spaces
+    text = text.replace(/\s+/g, ' ').trim();
+    // Truncate safely
+    const max = 100;
+    if (text.length > max) return text.substring(0, max) + '...';
+    return text;
 }
 
 function purify(text) {
@@ -19,6 +25,18 @@ async function createMod(mod) {
     titleSpan.id = `modtitle-${mod.uid}`;
     modNameContainer.appendChild(titleSpan);
     modNameContainer.appendChild(document.createElement('br'));
+
+    if (window._pageArguments && window._pageArguments.highlightMod === mod.uid) {
+        modNameContainer.style.backgroundColor = '#b5b5b544';
+        setTimeout(() => {
+            try {
+                modNameContainer.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            } catch (e) {
+                modNameContainer.scrollIntoView();
+            }
+        }, 50);
+        window._pageArguments = null; // Clear it so it doesn't affect other mods
+    }
 
     const descSpan = document.createElement('span');
     descSpan.className = 'calibri';
