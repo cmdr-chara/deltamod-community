@@ -30,3 +30,8 @@ approved `.csx` mod patches. Its release archive includes `LICENSE.txt`.
 Deltamod Community releases provide the exact corresponding UndertaleModTool
 source archive beside the installers. UndertaleModTool CLI remains a separate
 process under GPL-3.0-only; Deltamod Community remains under EUPL-1.2.
+## butler
+
+Deltamod Community packages butler 15.30.0 from https://broth.itch.zone/butler.
+butler is Copyright itch.io contributors and is distributed under the MIT License.
+Source: https://github.com/itchio/butler
