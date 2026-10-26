@@ -10,13 +10,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cmdr-chara/deltamod/releases/latest"><img alt="Latest release: 2.0.18" src="https://img.shields.io/badge/latest_release-2.0.18-7c5cff?style=for-the-badge"></a>
-  <a href="https://github.com/cmdr-chara/deltamod/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/cmdr-chara/deltamod/total?style=for-the-badge&amp;color=ef476f"></a>
+  <a href="https://github.com/cmdr-chara/deltamod-community/releases/latest"><img alt="Latest stable release" src="https://img.shields.io/github/v/release/cmdr-chara/deltamod-community?style=for-the-badge&amp;label=stable&amp;color=7c5cff"></a>
+  <a href="https://github.com/cmdr-chara/deltamod-community/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/cmdr-chara/deltamod-community/total?style=for-the-badge&amp;color=ef476f"></a>
   <a href="./LICENSE.txt"><img alt="License: EUPL 1.2" src="https://img.shields.io/badge/license-EUPL--1.2-4c8bf5?style=for-the-badge"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/cmdr-chara/deltamod/releases/latest"><strong>Download the latest release</strong></a>
+  <a href="https://github.com/cmdr-chara/deltamod-community/releases/latest"><strong>Download the latest release</strong></a>
   &nbsp;•&nbsp;
   <a href="#get-started">Get started</a>
   &nbsp;•&nbsp;
@@ -28,6 +28,15 @@
 <p align="center">
   <img src="./docs/assets/thumbnail.png" alt="Deltamod Community artwork">
 </p>
+
+## What's new in 2.1.0
+
+- **Improved macOS mod support.** Use a managed copy of the game and matching Windows reference files for supported xdelta patches. See [Patching on macOS](#patching-on-macos).
+- **More robust mod import and patching.** Stronger validation, staging, rollback, and recovery across the native runtime.
+- **More reliable mod browsing.** Improvements to provider shop handling, GameBanana comments, and UI localization.
+- **Dependency and security updates.** Refreshed React, Tauri, Vite, Vitest, Playwright, Rust dependencies, and CI actions, including high-severity npm audit remediations.
+
+On Apple Silicon, UndertaleModTool `.csx` patches remain unsupported. macOS mods targeting Windows `data.win` require matching Windows reference files.
 
 ## Why Deltamod Community?
 
@@ -43,64 +52,66 @@ You do **not** need Node.js, Rust, Git, or other development tools to use the ap
 
 ## Download
 
-The current build is the **2.0.18 unsigned Tauri release**. Open the release page, expand **Assets**, and download one installer from this table:
+Get the newest **published stable** build from [GitHub Releases](https://github.com/cmdr-chara/deltamod-community/releases/latest). The release page, not a hardcoded version badge, is authoritative for available installers. For the **2.1.0 minor release**, see [What's new](#whats-new-in-210). Stable installer availability is subject to the release gates in [RELEASE-GATE.md](./docs/RELEASE-GATE.md).
 
-| Your computer | Download this file |
+| Your computer | Asset in the stable release |
 | --- | --- |
-| Windows PC with a 64-bit Intel or AMD processor | `Deltamod-Community_2.0.18_x86_64-pc-windows-msvc-setup.exe` |
-| Mac with an Apple chip (M1 or newer) | `Deltamod.Community_2.0.18_aarch64.dmg` |
-| Mac with an Intel processor | `Deltamod.Community_2.0.18_x64.dmg` |
-| Debian, Ubuntu, Linux Mint, or another Debian-based x64 distribution | `Deltamod.Community_2.0.18_amd64.deb` |
+| Windows x64 (Intel or AMD) | `Deltamod.Community.Setup.exe` |
+| macOS Apple Silicon (M1 or newer) | `Deltamod.Community_<version>_aarch64.dmg` |
+| macOS Intel | `Deltamod.Community_<version>_x64.dmg` |
+| Debian/Ubuntu/Linux Mint x64 | `Deltamod.Community_<version>_amd64.deb` |
+
+Replace `<version>` with the version displayed in the selected release. Windows uses a version-independent branded installer name.
 
 <p align="center">
-  <a href="https://github.com/cmdr-chara/deltamod/releases/latest">
-    <img alt="Download Deltamod Community 2.0.18" src="https://img.shields.io/badge/DOWNLOAD-2.0.18-ef476f?style=for-the-badge&amp;logo=github">
+  <a href="https://github.com/cmdr-chara/deltamod-community/releases/latest">
+    <img alt="Download the latest stable Deltamod Community" src="https://img.shields.io/badge/DOWNLOAD-latest%20stable-ef476f?style=for-the-badge&amp;logo=github">
   </a>
 </p>
 
 > [!TIP]
-> Most players need only one `.exe`, `.dmg`, or `.deb`. The `.json` evidence files, signatures, checksums, tool source archives, and GitHub-generated source archives are not installers.
+> Most players need only one `.exe`, `.dmg`, or `.deb`. The `.json` evidence files, updater signatures, checksum manifests, tool-source archives, and GitHub-generated source archives are not installers. Preview builds are separate prereleases and are not served by the stable updater.
 
 > [!WARNING]
-> Windows and macOS packages are not currently code-signed, and the macOS packages are not notarized. Your operating system may show an unknown-publisher warning. Download only from this repository, verify the attached `SHA256SUMS.txt`, and install manually when a newer release is published.
+> Stable Windows and macOS **updater packages** use mandatory Tauri updater signatures, but there is no Authenticode publisher certificate, Apple Developer ID signature, or macOS notarization. Windows SmartScreen and macOS Gatekeeper warnings may appear. Verify `SHA256SUMS.txt` and available GitHub attestations. A checksum verifies file integrity, not publisher identity. Linux `.deb` updates are manual.
 
 <details>
 <summary><strong>Installation and checksum help</strong></summary>
 
 ### Windows
 
-1. Download the Windows setup `.exe`.
-2. Compare its SHA-256 hash with the matching entry in `SHA256SUMS.txt`.
+1. Download `Deltamod.Community.Setup.exe` from the latest stable release.
+2. Compare its SHA-256 digest to the entry in `SHA256SUMS.txt`.
 3. Run the installer and open **Deltamod Community**.
 
-Windows SmartScreen may show **Windows protected your PC** because the installer is unsigned. After verifying the download, choose **More info → Run anyway** if you decide to proceed.
+Windows SmartScreen may show **Windows protected your PC**. After verifying the download, choose **More info → Run anyway** only if you decide to proceed.
 
 ### macOS
 
-1. Check **Apple menu → About This Mac** to see whether your Mac uses an Apple chip or Intel processor.
-2. Download the matching DMG and verify it against `SHA256SUMS.txt`.
+1. Check **Apple menu → About This Mac** to determine your Mac's processor.
+2. Download the matching DMG and verify its hash against `SHA256SUMS.txt`.
 3. Open the DMG and move **Deltamod Community** to Applications.
 
-If Gatekeeper blocks the app after verification, try opening it once, then use **System Settings → Privacy & Security → Open Anyway**.
+If Gatekeeper blocks the verified app, try opening it once, then use **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally.
 
 ### Linux
 
-Install the Debian package with your graphical package manager or run this command from the download directory:
+Download the Debian package into a directory containing no other matching installers. Use your graphical package manager, or:
 
 ```console
-sudo apt install ./Deltamod.Community_2.0.18_amd64.deb
+sudo apt install ./Deltamod.Community_*_amd64.deb
 ```
 
 ### Verify a checksum
 
 | System | Command |
 | --- | --- |
-| Windows PowerShell | `Get-FileHash -Algorithm SHA256 -LiteralPath '.\Deltamod-Community_2.0.18_x86_64-pc-windows-msvc-setup.exe'` |
-| macOS Apple Silicon | `shasum -a 256 Deltamod.Community_2.0.18_aarch64.dmg` |
-| macOS Intel | `shasum -a 256 Deltamod.Community_2.0.18_x64.dmg` |
-| Linux x64 | `sha256sum Deltamod.Community_2.0.18_amd64.deb` |
+| Windows PowerShell | `Get-FileHash -Algorithm SHA256 -LiteralPath '.\Deltamod.Community.Setup.exe'` |
+| macOS Apple Silicon | `shasum -a 256 Deltamod.Community_*_aarch64.dmg` |
+| macOS Intel | `shasum -a 256 Deltamod.Community_*_x64.dmg` |
+| Linux x64 | `sha256sum Deltamod.Community_*_amd64.deb` |
 
-Delete the installer and download it again if the hashes do not match exactly.
+Compare the digest against the entry for the exact filename. If it does not match, delete and download the installer again.
 
 </details>
 
@@ -193,7 +204,7 @@ Deltamod adds validation, staging, and recovery around supported operations, but
 
 ## Help and contributing
 
-- Read [SUPPORT.md](./.github/SUPPORT.md) or [open a bug report](https://github.com/cmdr-chara/deltamod/issues/new/choose).
+- Read [SUPPORT.md](./.github/SUPPORT.md) or [open a bug report](https://github.com/cmdr-chara/deltamod-community/issues/new/choose).
 - Read [CONTRIBUTING.md](./.github/CONTRIBUTING.md) before proposing a change.
 - Report security vulnerabilities privately by following [SECURITY.md](./.github/SECURITY.md).
 
@@ -205,8 +216,8 @@ Never upload copyrighted game files, passwords, tokens, or other private data wh
 Development is Tauri-only and requires Node.js 22, Rust, and the platform prerequisites for [Tauri](https://v2.tauri.app/start/prerequisites/). `npm run dev` stages the native workers and verified tools before starting Tauri. There is no Electron fallback.
 
 ```console
-git clone https://github.com/cmdr-chara/deltamod.git
-cd deltamod
+git clone https://github.com/cmdr-chara/deltamod-community.git
+cd deltamod-community
 npm ci
 npm run acquire:g3mtool
 # Windows, Linux and Intel macOS only:
