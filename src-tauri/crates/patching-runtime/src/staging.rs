@@ -1212,6 +1212,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     fn add_packet(runtime: &Runtime, id: &str, patch: &[u8], to: &str) {
         let packet = runtime.mod_root.join(id);
         fs::create_dir_all(&packet).unwrap();
