@@ -1,3 +1,35 @@
+# Deltamod Community 2.1.0
+
+Minor release with improved macOS mod workflows, native patch and import
+reliability, dependency maintenance, and a refreshed download guide.
+
+## Highlights
+
+- Improve macOS mod acquisition and patching through managed game copies,
+  validated Windows reference files, and careful preservation of original apps.
+- Strengthen archive validation, native patch staging, path containment,
+  rollback, and recovery boundaries.
+- Improve GameBanana catalogue and comment workflows, and interface localization.
+- Update React and React DOM to 19.3.1, Tauri CLI to 2.12.4, Vite to 8.3.5,
+  Vitest to 5.0.5, Playwright to 1.64.1, and Zod to 4.6.7.
+- Update Cargo dependencies and pinned GitHub Actions, repair the Windows
+  Clippy CI regression, and address high-severity npm security advisories
+  involving Vite, Zod, undici, and follow-redirects.
+- Correct README download guidance, version links, and installer naming for
+  the canonical community repository.
+
+## Compatibility and publication requirements
+
+- Windows x64, Linux x64, Intel macOS, and Apple Silicon macOS remain the
+  supported packaging targets. See the README for support levels.
+- On macOS, xdelta patches targeting data.win need reference files from
+  a matching Windows game version; .csx patches remain unavailable on ARM Macs.
+- A stable release must pass the cross-platform package/smoke and updater
+  signing gates. Windows publisher signing and macOS notarization are not
+  provided. Linux .deb updates are manual.
+- When published, assets include SHA256SUMS.txt and GitHub attestations;
+  do not interpret unpublished builds or validation jobs as releases.
+
 # Deltamod Community 2.0.18
 
 Planned stable release.
