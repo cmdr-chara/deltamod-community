@@ -1,0 +1,93 @@
+name: Recover unpublished Deltamod Community 2.1.1
+
+on:
+  push:
+    branches: [DeltaMaster]
+    paths:
+      - .github/workflows/recover-unpublished-2-1-1.yml
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: deltamod-recover-unpublished-2-1-1
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify unpublished tag and validated security fixes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin DeltaMaster --tags --force
+          test "$(git rev-parse origin/DeltaMaster)" = "$GITHUB_SHA"
+          # This recovery is deliberately bound to the old unpublished 2.1.1 tag.
+          test "$(git rev-parse refs/tags/community-v2.1.1)" = "dadd933323b8a641a61396a74e6dccd8425d821c"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/community-v2.1.1" >/dev/null 2>&1; then
+            echo "Refusing to rewrite a published release tag." >&2
+            exit 1
+          fi
+          test "$(git rev-parse 88a204f77a6a2cd87f5126a14ce02388ec8b53c7)" = "88a204f77a6a2cd87f5126a14ce02388ec8b53c7"
+          git merge-base --is-ancestor 88a204f77a6a2cd87f5126a14ce02388ec8b53c7 HEAD
+          node scripts/verify-rustls-lock.cjs
+          node --test scripts/verify-rustls-lock.test.cjs
+      - name: Prepare corrected 2.1.1 release manifests
+        env:
+          VERSION: 2.1.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'src-tauri/tauri.conf.json';
+          const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+          config.version = process.env.VERSION;
+          fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+          NODE
+          python3 <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          version = os.environ['VERSION']
+          cargo = Path('src-tauri/Cargo.toml')
+          contents, count = re.subn(r'(?m)^(version\s*=\s*")[^"]+("\s*)$', lambda m: m[1] + version + m[2], cargo.read_text(), count=1)
+          if count != 1:
+              raise SystemExit('Cargo.toml version was not updated')
+          cargo.write_text(contents)
+          lock = Path('src-tauri/Cargo.lock')
+          contents, count = re.subn(r'(\[\[package\]\]\nname = "deltamod-tauri-shell"\nversion = ")[^"]+("\n)', lambda m: m[1] + version + m[2], lock.read_text(), count=1)
+          if count != 1:
+              raise SystemExit('Cargo.lock shell version was not updated')
+          lock.write_text(contents)
+          changelog = Path('CHANGELOG.txt')
+          old = changelog.read_text()
+          if not old.startswith('# Deltamod Community 2.1.1\n'):
+              changelog.write_text('# Deltamod Community 2.1.1\n\nReleased October 27, 2026.\n\n## Changes\n\n- Fixed mod patch restoration and consecutive crash recovery.\n- Fixed profile restoration, solid 7z imports, and duplicate-import cancellation.\n- Corrected unsupported CSX script messaging.\n- Updated rustls to a patched release and added TLS dependency security checks.\n- Replaced the retired macOS ARM runner for package builds.\n\n' + old)
+          PY
+          node scripts/verify-rustls-lock.cjs
+      - name: Replace only the unpublished 2.1.1 tag and dispatch signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.txt
+          git commit -m "chore(release): Deltamod Community 2.1.1 (patched) [skip ci]"
+          git tag -f community-v2.1.1 HEAD
+          git push --force-with-lease=refs/tags/community-v2.1.1:dadd933323b8a641a61396a74e6dccd8425d821c origin refs/tags/community-v2.1.1
+          gh workflow run tauri-release.yml --ref community-v2.1.1 -f release_mode=stable
