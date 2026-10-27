@@ -177,6 +177,11 @@ impl fmt::Display for StagingError {
             }
             StagingErrorCode::Cancelled => formatter.write_str("Patch staging was cancelled."),
             StagingErrorCode::SandboxUnavailable => {
+                if self.mechanism == Some(PatchMechanism::Csx) {
+                    return formatter.write_str(
+                        "CSX script mods are not supported by this desktop build. Use an xdelta, G3M, or file-replacement edition of the mod. The mod was not applied and the game was not launched.",
+                    );
+                }
                 write!(
                     formatter,
                     "This build cannot safely run {mechanism}. The mod was not applied and the game was not launched."
@@ -1165,6 +1170,36 @@ mod tests {
             assert_eq!(error.diagnostic().unwrap().detail(), code.as_str());
             assert!(!runtime.game_root.join(super::super::JOURNAL_NAME).exists());
         }
+    }
+
+    #[test]
+    fn csx_readiness_and_staging_explain_the_same_unavailable_capability() {
+        let (_root, runtime) = fixture("data.win", "csx");
+        let script = runtime.mod_root.join("one/script.csx");
+        // A missing script must still produce the capability error, without
+        // inspecting script contents or trying to execute the bundled CLI.
+        fs::remove_file(&script).unwrap();
+        let readiness = runtime.packet_staging_readiness("one").unwrap_err();
+        let staging = runtime
+            .stage_patch_outputs(&["id".into()], "unsupported-csx", |_| {}, || false)
+            .unwrap_err();
+        assert_eq!(readiness.code(), StagingErrorCode::SandboxUnavailable);
+        assert_eq!(readiness.code(), staging.code());
+        assert_eq!(readiness.to_string(), staging.to_string());
+        assert!(staging
+            .to_string()
+            .starts_with("CSX script mods are not supported by this desktop build."));
+        assert!(staging
+            .to_string()
+            .contains("xdelta, G3M, or file-replacement"));
+        assert!(staging
+            .to_string()
+            .ends_with("The mod was not applied and the game was not launched."));
+        assert_eq!(
+            fs::read(runtime.game_root.join("data.win")).unwrap(),
+            b"original"
+        );
+        assert!(!runtime.game_root.join(super::super::JOURNAL_NAME).exists());
     }
 
     /// A native executable exercises Linux's pinned /proc/self/fd launch path,

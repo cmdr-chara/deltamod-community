@@ -388,6 +388,46 @@ pub mod tauri_adapter {
     use tauri_plugin_dialog::DialogExt;
     use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogResult};
 
+    const NEXT_LABEL: &str = "Next";
+    const CANCEL_LABEL: &str = "Cancel";
+
+    fn choose_with_native_dialog(
+        choices: &[String],
+        mut show: impl FnMut(MessageDialogButtons) -> MessageDialogResult,
+    ) -> Result<Option<usize>, AdapterError> {
+        if choices.is_empty() || choices.len() > 256 {
+            return Err(AdapterError::InvalidDialog);
+        }
+        // The official plugin exposes at most three message buttons. Custom
+        // results contain only their label, so reserve distinct navigation labels
+        // even when a choice itself is named "Next" or "Cancel".
+        for (index, choice) in choices.iter().enumerate() {
+            let selection_label = if choice == NEXT_LABEL || choice == CANCEL_LABEL {
+                format!("Select {choice}")
+            } else {
+                choice.clone()
+            };
+            let result = show(MessageDialogButtons::YesNoCancelCustom(
+                selection_label.clone(),
+                NEXT_LABEL.to_owned(),
+                CANCEL_LABEL.to_owned(),
+            ));
+            match result {
+                MessageDialogResult::Cancel => return Ok(None),
+                MessageDialogResult::Custom(value) if value == CANCEL_LABEL => return Ok(None),
+                MessageDialogResult::No => continue,
+                MessageDialogResult::Custom(value) if value == NEXT_LABEL => continue,
+                MessageDialogResult::Yes => return Ok(Some(index)),
+                MessageDialogResult::Custom(value) if value == selection_label => {
+                    return Ok(Some(index));
+                }
+                // An unexpected response must not advance or select a choice.
+                _ => return Ok(None),
+            }
+        }
+        Ok(None)
+    }
+
     pub struct TauriDialogBackend<'a, R: Runtime, M: Manager<R>> {
         manager: &'a M,
         _runtime: std::marker::PhantomData<R>,
@@ -437,39 +477,137 @@ pub mod tauri_adapter {
             message: &str,
             choices: &[String],
         ) -> Result<Option<usize>, AdapterError> {
-            if choices.is_empty() || choices.len() > 256 {
-                return Err(AdapterError::InvalidDialog);
-            }
-            // The official plugin exposes at most three message buttons. Walk the list
-            // with an explicit Next action while retaining native ownership and cancel.
-            for (index, choice) in choices.iter().enumerate() {
-                let result = self
-                    .manager
+            choose_with_native_dialog(choices, |buttons| {
+                self.manager
                     .dialog()
                     .message(message)
                     .title(title)
-                    .buttons(MessageDialogButtons::YesNoCancelCustom(
-                        choice.clone(),
-                        "Next".to_owned(),
-                        "Cancel".to_owned(),
-                    ))
-                    .blocking_show_with_result();
-                match result {
-                    MessageDialogResult::Yes => return Ok(Some(index)),
-                    MessageDialogResult::Custom(ref value) if value == choice => {
-                        return Ok(Some(index));
-                    }
-                    MessageDialogResult::Cancel => return Ok(None),
-                    _ => {}
-                }
-            }
-            Ok(None)
+                    .buttons(buttons)
+                    .blocking_show_with_result()
+            })
         }
     }
 
     pub use tauri;
     pub use tauri_plugin_dialog;
     pub use tauri_plugin_opener;
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn labels(buttons: MessageDialogButtons) -> (String, String, String) {
+            match buttons {
+                MessageDialogButtons::YesNoCancelCustom(select, next, cancel) => {
+                    (select, next, cancel)
+                }
+                other => panic!("unexpected native choice buttons: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn native_cancel_stops_on_first_dialog_for_typed_and_custom_results() {
+            for custom in [false, true] {
+                let choices = vec!["Delete old version".into(), "Keep old version".into()];
+                let mut calls = 0;
+                let result = choose_with_native_dialog(&choices, |buttons| {
+                    calls += 1;
+                    let (_, _, cancel) = labels(buttons);
+                    if custom {
+                        MessageDialogResult::Custom(cancel)
+                    } else {
+                        MessageDialogResult::Cancel
+                    }
+                });
+                assert_eq!(result.unwrap(), None);
+                assert_eq!(calls, 1);
+            }
+        }
+
+        #[test]
+        fn native_next_and_selection_are_explicit_for_typed_and_custom_results() {
+            for custom in [false, true] {
+                let choices = vec!["Delete old version".into(), "Keep old version".into()];
+                let mut calls = 0;
+                let result = choose_with_native_dialog(&choices, |buttons| {
+                    let (select, next, _) = labels(buttons);
+                    calls += 1;
+                    if calls == 1 {
+                        if custom {
+                            MessageDialogResult::Custom(next)
+                        } else {
+                            MessageDialogResult::No
+                        }
+                    } else if custom {
+                        MessageDialogResult::Custom(select)
+                    } else {
+                        MessageDialogResult::Yes
+                    }
+                });
+                assert_eq!(result.unwrap(), Some(1));
+                assert_eq!(calls, 2);
+            }
+        }
+
+        #[test]
+        fn native_reserved_choice_labels_do_not_collide_with_navigation() {
+            for reserved in [NEXT_LABEL, CANCEL_LABEL] {
+                let choices = vec![reserved.to_owned(), "Another choice".into()];
+                let selected = choose_with_native_dialog(&choices, |buttons| {
+                    let (select, next, cancel) = labels(buttons);
+                    assert_eq!(select, format!("Select {reserved}"));
+                    assert_ne!(select, next);
+                    assert_ne!(select, cancel);
+                    MessageDialogResult::Custom(select)
+                });
+                assert_eq!(selected.unwrap(), Some(0));
+
+                let mut calls = 0;
+                let cancelled = choose_with_native_dialog(&choices, |buttons| {
+                    calls += 1;
+                    MessageDialogResult::Custom(labels(buttons).2)
+                });
+                assert_eq!(cancelled.unwrap(), None);
+                assert_eq!(calls, 1);
+
+                let mut calls = 0;
+                let advanced = choose_with_native_dialog(&choices, |buttons| {
+                    let (select, next, _) = labels(buttons);
+                    calls += 1;
+                    MessageDialogResult::Custom(if calls == 1 { next } else { select })
+                });
+                assert_eq!(advanced.unwrap(), Some(1));
+                assert_eq!(calls, 2);
+            }
+        }
+
+        #[test]
+        fn unexpected_native_results_cancel_without_advancing() {
+            for response in [
+                MessageDialogResult::Ok,
+                MessageDialogResult::Custom("unrecognized response".into()),
+            ] {
+                let choices = vec!["First".into(), "Second".into()];
+                let mut calls = 0;
+                let result = choose_with_native_dialog(&choices, |_| {
+                    calls += 1;
+                    response.clone()
+                });
+                assert_eq!(result.unwrap(), None);
+                assert_eq!(calls, 1);
+            }
+        }
+
+        #[test]
+        fn invalid_choice_count_never_opens_a_native_dialog() {
+            for choices in [vec![], vec!["Choice".to_owned(); 257]] {
+                assert_eq!(
+                    choose_with_native_dialog(&choices, |_| panic!("must not show a dialog")),
+                    Err(AdapterError::InvalidDialog)
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

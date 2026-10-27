@@ -347,6 +347,101 @@ fn preflight_enforces_exact_provider_version_archive_and_file_plan() {
 }
 
 #[test]
+fn historical_adoption_source_identity_does_not_change_operation_preconditions() {
+    let mut desired = spec(0, "a", "101", "1", A, "mods/a.dat", B);
+    let stable = file_source_fingerprint(&desired.files);
+    let mut adoption = desired.files.clone();
+    adoption[0].expected_previous_sha256 = Some(B.into());
+    let historical = file_plan_fingerprint(&adoption);
+    assert_ne!(stable, historical);
+    assert_eq!(file_source_fingerprint(&adoption), stable);
+    desired.locked.file_plan_fingerprint = historical.clone();
+    let (_, target) = lock("target", &[desired.clone()]);
+    let switch = ProfileSwitchPlan::build(None, None, &target).unwrap();
+    let restored = resolved(&desired, &switch.operations()[0], None, None)
+        .with_source_fingerprint(&historical)
+        .unwrap();
+
+    assert_eq!(restored.source_fingerprint(), historical);
+    assert_eq!(restored.fingerprint(), stable);
+    assert_eq!(restored.files()[0].expected_previous_sha256, None);
+    assert_eq!(
+        restored.request().intent().file_plan_fingerprint.as_deref(),
+        Some(stable.as_str())
+    );
+    assert_eq!(
+        switch
+            .preflight(None, std::slice::from_ref(&restored))
+            .disposition(),
+        ProfilePreflightDisposition::Ready
+    );
+    // Substituting the adoption plan after its request was frozen still fails.
+    assert_eq!(
+        ValidatedInstallPlan::new(
+            restored.request().clone(),
+            restored.metadata().clone(),
+            adoption,
+        ),
+        Err(PlanError::FingerprintMismatch)
+    );
+
+    for change in ["hash", "path", "identity", "size"] {
+        let mut substituted = desired.clone();
+        match change {
+            "hash" => substituted.files[0].sha256 = C.into(),
+            "path" => {
+                substituted.files[0].path = ValidatedRelativePath::parse("mods/b.dat").unwrap()
+            }
+            "identity" => substituted.files[0].path_identity_key = "mods/b.dat".into(),
+            "size" => substituted.files[0].size_bytes += 1,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            resolved(&substituted, &switch.operations()[0], None, None)
+                .with_source_fingerprint(&historical),
+            Err(PlanError::SourceFingerprintMismatch),
+            "changed {change} must not match the historical source"
+        );
+    }
+}
+
+#[test]
+fn profile_source_rebinding_cannot_add_unfrozen_adoption_permission() {
+    for historical_lock in [false, true] {
+        let mut desired = spec(0, "a", "101", "1", A, "mods/a.dat", B);
+        if historical_lock {
+            let mut historical = desired.files.clone();
+            historical[0].expected_previous_sha256 = Some(B.into());
+            desired.locked.file_plan_fingerprint = file_plan_fingerprint(&historical);
+        }
+        let (_, target) = lock("target", &[desired.clone()]);
+        let switch = ProfileSwitchPlan::build(None, None, &target).unwrap();
+        let operation = &switch.operations()[0];
+        let mut adoption = desired.clone();
+        adoption.files[0].expected_previous_sha256 = Some(C.into());
+        let unfrozen = resolved(&adoption, operation, None, None)
+            .with_source_fingerprint(&desired.locked.file_plan_fingerprint)
+            .unwrap();
+        let report = switch.preflight(None, &[unfrozen]);
+        assert_eq!(report.disposition(), ProfilePreflightDisposition::Blocked);
+        assert!(report.errors().iter().any(|error| matches!(
+            error,
+            ProfilePreflightError::ExactIdentityMismatch { instance_id } if instance_id == "a"
+        )));
+
+        if historical_lock {
+            // Preserve explicit adoption that was already bound by an old lock.
+            adoption.files[0].expected_previous_sha256 = Some(B.into());
+            let previously_bound = resolved(&adoption, operation, None, None);
+            assert_eq!(
+                switch.preflight(None, &[previously_bound]).disposition(),
+                ProfilePreflightDisposition::Ready
+            );
+        }
+    }
+}
+
+#[test]
 fn retry_operation_identity_is_stable_and_arbitrary_binding_is_rejected() {
     let specs = vec![spec(0, "a", "101", "1", A, "mods/a.dat", B)];
     let (_, target) = lock("target", &specs);
