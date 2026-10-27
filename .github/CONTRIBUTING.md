@@ -25,11 +25,13 @@ npm run acquire:undertale-mod-tool
 npm run dev
 ```
 
-On Apple Silicon, skip the UndertaleModTool acquisition command. CSX is explicitly
-unavailable there. G3MTool binaries can be acquired, but external xdelta/G3M/CSX
-execution in the Tauri transactional staging path remains disabled until its process
-confinement boundary is implemented and verified. Internal full-file override staging
-is separate. Tool downloads are pinned and verified, not installed by `npm ci`.
+On Apple Silicon, skip the UndertaleModTool acquisition command. The Tauri
+transactional staging path supports internal file replacements and pinned G3MTool
+xdelta/G3M patching. **CSX scripts remain unavailable on every platform** until a
+script-execution confinement boundary is implemented and verified; acquiring or
+independently smoke-testing UndertaleModCli does not enable CSX in the desktop app.
+The upstream CLI is also unavailable for Apple Silicon. Tool downloads are pinned
+and verified, not installed by `npm ci`.
 
 `npm run build:tauri` creates NSIS on Windows, a `.deb` on Linux, and app/DMG bundles
 on macOS. To select another supported architecture on the same operating system,

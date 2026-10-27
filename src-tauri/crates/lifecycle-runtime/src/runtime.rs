@@ -854,7 +854,7 @@ impl ReleaseARuntime {
             version: plan.metadata().version.clone(),
             provider: plan.metadata().provider.clone(),
             archive_sha256: plan.metadata().archive_sha256.clone(),
-            file_plan_fingerprint: plan.fingerprint().to_owned(),
+            file_plan_fingerprint: plan.source_fingerprint().to_owned(),
             manifest_generation: generation,
             installed_at_ms: previous_record
                 .as_ref()
@@ -1259,7 +1259,7 @@ impl ReleaseARuntime {
                             version: child.metadata().version.clone(),
                             provider: child.metadata().provider.clone(),
                             archive_sha256: child.metadata().archive_sha256.clone(),
-                            file_plan_fingerprint: child.fingerprint().to_owned(),
+                            file_plan_fingerprint: child.source_fingerprint().to_owned(),
                             manifest_generation: 1,
                             installed_at_ms,
                             updated_at_ms: record.updated_at_ms,

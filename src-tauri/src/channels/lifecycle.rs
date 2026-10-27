@@ -3,16 +3,17 @@ use serde_json::{json, Value};
 
 use deltamod_archive_import_runtime::{stage_mod_archive, Limits as ArchiveLimits};
 use deltamod_lifecycle_runtime::{
-    file_plan_fingerprint, CachedArchiveSource, DurableLifecycleStore, ExecutionIdentity,
-    InstallFilePlan, InstallMetadata, LifecycleOutcome, LockedProfileMod, OsLifecycleWorkspace,
-    ProfileDefinition, ProfileLockfile, ProfileModDefinition, ProviderArtifactSource,
-    ReleaseARuntime, RepairPlanDisposition, RepairSourceCatalog, StagingSource,
-    StartupRecoveryOutcome, ValidatedInstallPlan, ValidatedUninstallPlan, VerificationScope,
+    file_plan_fingerprint, file_source_fingerprint, CachedArchiveSource, DurableLifecycleStore,
+    ExecutionIdentity, InstallFilePlan, InstallMetadata, LifecycleOutcome, LockedProfileMod,
+    OsLifecycleWorkspace, ProfileDefinition, ProfileLockfile, ProfileModDefinition,
+    ProviderArtifactSource, ReleaseARuntime, RepairPlanDisposition, RepairSourceCatalog,
+    StagingSource, StartupRecoveryOutcome, ValidatedInstallPlan, ValidatedUninstallPlan,
+    VerificationScope,
 };
 use deltamod_product_contracts::{
-    LifecycleOperationKind, OperationIntent, OperationPhase, OperationRequest,
-    ProviderArtifactKind, ProviderId, ProviderItemKind, ProviderRef, ProviderResourceId,
-    ValidatedRelativePath,
+    LifecycleOperationKind, OperationIntent, OperationPhase, OperationRequest, OperationState,
+    ProductErrorCode, ProviderArtifactKind, ProviderId, ProviderItemKind, ProviderRef,
+    ProviderResourceId, ValidatedRelativePath,
 };
 use deltamod_tauri_os_adapters::DialogBackend;
 use deltamod_tauri_os_adapters::{validate_dialog_selection, DialogFilter, DialogRequest};
@@ -346,16 +347,13 @@ fn switch_profile(state: &AppState, data: &[Value]) -> Result<Value, String> {
                 },
             })
             .collect::<Vec<_>>();
-        if !file_plan_fingerprint(&files).eq_ignore_ascii_case(&locked.file_plan_fingerprint) {
-            return Err("PROFILE_SOURCE_UNAVAILABLE:file_plan_mismatch".into());
-        }
         let child_intent = OperationIntent {
             installation_id: target.installation_id.clone(),
             kind: operation.kind(),
             mod_instance_id: Some(locked.instance_id.clone()),
             provider: Some(locked.provider.clone()),
             archive_sha256: Some(locked.archive_sha256.clone()),
-            file_plan_fingerprint: Some(locked.file_plan_fingerprint.clone()),
+            file_plan_fingerprint: Some(file_plan_fingerprint(&files)),
             profile_id: Some(target.profile_id.clone()),
         };
         let child_request = OperationRequest::new(
@@ -377,7 +375,9 @@ fn switch_profile(state: &AppState, data: &[Value]) -> Result<Value, String> {
                 },
                 files,
             )
-            .map_err(|_| error::internal())?,
+            .map_err(|_| error::internal())?
+            .with_source_fingerprint(&locked.file_plan_fingerprint)
+            .map_err(|_| "PROFILE_SOURCE_UNAVAILABLE:file_plan_mismatch".to_owned())?,
         );
     }
     let request = OperationRequest::new(
@@ -684,6 +684,7 @@ fn adopt_record(state: &AppState, record: &Value) -> Result<Option<(String, Stri
             || contract_id("package", uid, 256),
             |value| contract_id("package", value, 256),
         );
+    let source_fingerprint = file_source_fingerprint(&files);
     let plan = ValidatedInstallPlan::new(
         request,
         InstallMetadata {
@@ -696,6 +697,7 @@ fn adopt_record(state: &AppState, record: &Value) -> Result<Option<(String, Stri
         },
         files,
     )
+    .and_then(|plan| plan.with_source_fingerprint(&source_fingerprint))
     .map_err(|_| error::internal())?;
     let mut runtime = ReleaseARuntime::new(store);
     require_success(runtime.install(plan, identity(&operation_id), &mut workspace))?;
@@ -1351,7 +1353,26 @@ fn remove_empty_package_directories(
 
 fn require_success(outcome: LifecycleOutcome) -> Result<(), String> {
     match outcome {
-        LifecycleOutcome::Succeeded { .. } | LifecycleOutcome::Existing { .. } => Ok(()),
+        LifecycleOutcome::Succeeded { .. } => Ok(()),
+        LifecycleOutcome::Existing { operation } => {
+            if operation.state == OperationState::Succeeded {
+                return Ok(());
+            }
+            let code = operation.error.as_ref().map_or_else(
+                || match operation.state {
+                    OperationState::Queued
+                    | OperationState::Running
+                    | OperationState::Cancelling => ProductErrorCode::InstallationBusy,
+                    OperationState::RecoveryRequired | OperationState::Recovered => {
+                        ProductErrorCode::RecoveryRequired
+                    }
+                    OperationState::Cancelled => ProductErrorCode::Cancelled,
+                    _ => ProductErrorCode::Internal,
+                },
+                |error| error.code,
+            );
+            Err(code.as_str().into())
+        }
         LifecycleOutcome::Busy { error, .. }
         | LifecycleOutcome::Rejected { error, .. }
         | LifecycleOutcome::RecoveryRequired { error, .. } => Err(error.code.as_str().into()),
@@ -1490,6 +1511,350 @@ mod tests {
         }
         archive.finish().unwrap();
         path
+    }
+
+    fn imported_profile_packet(state: &AppState, root: &Path) -> PathBuf {
+        let games = root.join("resources/games");
+        fs::create_dir_all(&games).unwrap();
+        fs::write(
+            games.join("fixture.json"),
+            r#"{"id":"test.game","name":"Fixture","exeName":"GAME.exe","availableFeatures":[]}"#,
+        )
+        .unwrap();
+        fs::create_dir_all(state.game_store_path.parent().unwrap()).unwrap();
+        fs::write(&state.game_store_path, r#"{"gamePid":"test.game"}"#).unwrap();
+        deltamod_archive_import_runtime::import_archive_with_source(
+            &replacement_archive(root),
+            &state.data_root.root.join("packets"),
+            ArchiveLimits::default(),
+            None,
+            || false,
+            |_| deltamod_archive_import_runtime::DuplicateDecision::Cancel,
+        )
+        .unwrap()
+        .destination
+    }
+
+    // Reproduce the pre-fix adapter's adoption plan so the persisted manifest and
+    // subsequently captured lock retain the historical v2 fingerprint.
+    fn persist_legacy_adoption(state: &AppState, packet: &Path) -> String {
+        let records = super::super::runtime::mod_list(state, "lifecycle:getInstalledMods").unwrap();
+        let record = &records[0];
+        let uid = record["uid"].as_str().unwrap();
+        let library = state.data_root.root.join("packets");
+        let entries = package_files(&library, packet).unwrap();
+        let snapshot = ensure_package_snapshot(state, &library, &entries).unwrap();
+        let files = entries
+            .into_iter()
+            .map(|entry| InstallFilePlan {
+                path_identity_key: lifecycle_path_identity_key(entry.relative.as_str()),
+                path: entry.relative.clone(),
+                sha256: entry.sha256.clone(),
+                size_bytes: entry.size,
+                expected_previous_sha256: Some(entry.sha256),
+                source: StagingSource::ArtifactTree {
+                    source_id: snapshot.source_id.clone(),
+                    source_path: entry.relative,
+                },
+            })
+            .collect::<Vec<_>>();
+        let fingerprint = file_plan_fingerprint(&files);
+        let provider = provider_ref(record, uid).unwrap();
+        let request = OperationRequest::new(
+            "legacy-adoption",
+            "legacy-adoption",
+            OperationIntent {
+                installation_id: PACKETS_INSTALLATION.into(),
+                kind: LifecycleOperationKind::Install,
+                mod_instance_id: Some(uid.into()),
+                provider: Some(provider.clone()),
+                archive_sha256: Some(snapshot.sha256.clone()),
+                file_plan_fingerprint: Some(fingerprint.clone()),
+                profile_id: None,
+            },
+        )
+        .unwrap();
+        let plan = ValidatedInstallPlan::new(
+            request,
+            InstallMetadata {
+                instance_id: uid.into(),
+                mod_id: "example.mod".into(),
+                display_name: record["name"].as_str().unwrap().into(),
+                version: Some(record["version"].as_str().unwrap().into()),
+                provider,
+                archive_sha256: Some(snapshot.sha256),
+            },
+            files,
+        )
+        .unwrap();
+        let workspace_root = library_workspace_root(state, PACKETS_INSTALLATION);
+        fs::create_dir_all(&workspace_root).unwrap();
+        let mut workspace = OsLifecycleWorkspace::open(library, workspace_root).unwrap();
+        workspace
+            .register_artifact_tree_source(&snapshot.source_id, &snapshot.root)
+            .unwrap();
+        require_success(ReleaseARuntime::new(open_store(state).unwrap()).install(
+            plan,
+            identity("legacy-adoption"),
+            &mut workspace,
+        ))
+        .unwrap();
+        fingerprint
+    }
+
+    fn captured_profile(state: &AppState, profile_id: &str) -> ProfileLockfile {
+        let value = dispatch(
+            state,
+            "lifecycle:createProfileFromCurrent",
+            &[json!(profile_id), json!(PACKETS_INSTALLATION)],
+        )
+        .unwrap()
+        .unwrap();
+        serde_json::from_value(value["profile"].clone()).unwrap()
+    }
+
+    fn assert_profile_restored(state: &AppState, profile: &ProfileLockfile, packet: &Path) {
+        let result = dispatch(
+            state,
+            "lifecycle:switchProfile",
+            &[json!(profile.profile_id), json!("restore-captured")],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(fs::read(packet.join("new.dat")).unwrap(), b"new-version");
+        let catalog = authoritative_catalog(state).unwrap();
+        assert_eq!(catalog["errors"], json!([]));
+        assert_eq!(catalog["installedMods"].as_array().unwrap().len(), 1);
+        assert_eq!(catalog["verificationResults"][0]["state"], "healthy");
+        assert_eq!(catalog["gameHealthReports"][0]["state"], "healthy");
+        assert_eq!(
+            catalog["installedMods"][0]["filePlanFingerprint"],
+            profile.mods[0].file_plan_fingerprint
+        );
+        let status = operation_status(state, "restore-captured").unwrap();
+        assert_eq!(status["operation"]["state"], "succeeded");
+        let active = open_store(state)
+            .unwrap()
+            .active_profile(PACKETS_INSTALLATION)
+            .unwrap()
+            .unwrap();
+        assert_eq!(active.profile_id(), profile.profile_id);
+        assert_eq!(active.lock_fingerprint(), profile.fingerprint().unwrap());
+    }
+
+    #[test]
+    fn captured_imported_profile_restores_after_uninstall_with_and_without_repair() {
+        for repair in [false, true] {
+            let (state, root) = state();
+            let packet = imported_profile_packet(&state, &root);
+            let catalog = authoritative_catalog(&state).unwrap();
+            assert_eq!(catalog["verificationResults"][0]["state"], "healthy");
+            let uid = catalog["installedMods"][0]["instanceId"].as_str().unwrap();
+            if repair {
+                fs::remove_file(packet.join("new.dat")).unwrap();
+                let result =
+                    repair_mod(&state, PACKETS_INSTALLATION, uid, "repair-missing").unwrap();
+                assert_eq!(result["repaired"], true);
+                assert_eq!(fs::read(packet.join("new.dat")).unwrap(), b"new-version");
+            }
+            let profile = captured_profile(&state, "captured");
+            let current =
+                switch_profile(&state, &[json!("captured"), json!("activate-current")]).unwrap();
+            assert_eq!(current["ok"], true);
+            let before_noop = open_store(&state)
+                .unwrap()
+                .manifest(PACKETS_INSTALLATION)
+                .unwrap();
+            switch_profile(
+                &state,
+                &[json!("captured"), json!("activate-current-again")],
+            )
+            .unwrap();
+            assert_eq!(
+                open_store(&state)
+                    .unwrap()
+                    .manifest(PACKETS_INSTALLATION)
+                    .unwrap(),
+                before_noop
+            );
+            uninstall_mod(&state, PACKETS_INSTALLATION, uid, "remove-current").unwrap();
+            assert!(!packet.exists());
+            assert_profile_restored(&state, &profile, &packet);
+            drop(state);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn persisted_legacy_adoption_and_profile_restore_without_rewriting_lock() {
+        let (state, root) = state();
+        let packet = imported_profile_packet(&state, &root);
+        let legacy_fingerprint = persist_legacy_adoption(&state, &packet);
+        let catalog = authoritative_catalog(&state).unwrap();
+        assert_eq!(
+            catalog["installedMods"][0]["filePlanFingerprint"],
+            legacy_fingerprint
+        );
+        let profile = captured_profile(&state, "legacy-captured");
+        assert_eq!(profile.mods[0].file_plan_fingerprint, legacy_fingerprint);
+        let canonical_lock = profile.to_canonical_json().unwrap();
+        drop(state);
+
+        let state = AppState::initialize(root.join("data"), root.join("resources")).unwrap();
+        let persisted = state
+            .profile_registry
+            .lock()
+            .unwrap()
+            .get("legacy-captured")
+            .unwrap();
+        assert_eq!(persisted.to_canonical_json().unwrap(), canonical_lock);
+        assert_eq!(
+            open_store(&state)
+                .unwrap()
+                .manifest(PACKETS_INSTALLATION)
+                .unwrap()
+                .unwrap()
+                .records[0]
+                .file_plan_fingerprint,
+            legacy_fingerprint
+        );
+        switch_profile(
+            &state,
+            &[json!("legacy-captured"), json!("activate-legacy")],
+        )
+        .unwrap();
+        uninstall_mod(
+            &state,
+            PACKETS_INSTALLATION,
+            &profile.mods[0].instance_id,
+            "uninstall-legacy",
+        )
+        .unwrap();
+        assert!(!packet.exists());
+        drop(state);
+
+        let state = AppState::initialize(root.join("data"), root.join("resources")).unwrap();
+        assert_profile_restored(&state, &persisted, &packet);
+        assert_eq!(
+            state
+                .profile_registry
+                .lock()
+                .unwrap()
+                .get("legacy-captured")
+                .unwrap()
+                .to_canonical_json()
+                .unwrap(),
+            canonical_lock
+        );
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn profile_restore_rejects_changed_cache_and_unclaimed_files_including_failed_replay() {
+        for legacy in [false, true] {
+            let (state, root) = state();
+            let packet = imported_profile_packet(&state, &root);
+            if legacy {
+                persist_legacy_adoption(&state, &packet);
+            }
+            authoritative_catalog(&state).unwrap();
+            let profile = captured_profile(&state, "protected");
+            uninstall_mod(
+                &state,
+                PACKETS_INSTALLATION,
+                &profile.mods[0].instance_id,
+                "remove-protected",
+            )
+            .unwrap();
+            let cached_payload = state
+                .data_root
+                .root
+                .join(ARTIFACT_CACHE_DIRECTORY)
+                .join(&profile.mods[0].archive_sha256)
+                .join("example.mod/new.dat");
+            fs::write(&cached_payload, b"changed-cache").unwrap();
+            assert_eq!(
+                switch_profile(&state, &[json!("protected"), json!("reject-cache")]),
+                Err("PROFILE_SOURCE_UNAVAILABLE:file_plan_mismatch".into())
+            );
+            assert!(!packet.exists());
+            fs::write(&cached_payload, b"new-version").unwrap();
+
+            // Even identical unclaimed bytes require explicit adoption consent.
+            // Accepting a historical source identity must not grant that consent.
+            fs::create_dir_all(&packet).unwrap();
+            fs::write(packet.join("new.dat"), b"new-version").unwrap();
+            for _ in 0..2 {
+                assert_eq!(
+                    switch_profile(&state, &[json!("protected"), json!("reject-unclaimed")]),
+                    Err("external_modification".into())
+                );
+                assert_eq!(fs::read(packet.join("new.dat")).unwrap(), b"new-version");
+                assert!(!packet.join("meta.toml").exists());
+                assert!(open_store(&state)
+                    .unwrap()
+                    .active_profile(PACKETS_INSTALLATION)
+                    .unwrap()
+                    .is_none());
+            }
+            assert_eq!(
+                operation_status(&state, "reject-unclaimed").unwrap()["operation"]["state"],
+                "failed"
+            );
+            fs::remove_file(packet.join("new.dat")).unwrap();
+            fs::remove_dir(&packet).unwrap();
+            assert_profile_restored(&state, &profile, &packet);
+            drop(state);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn existing_operation_only_acknowledges_terminal_success() {
+        use deltamod_product_contracts::{fixtures, OperationRecord, OperationState};
+
+        for (state, expected) in [
+            (OperationState::Succeeded, Ok(())),
+            (OperationState::Queued, Err("installation_busy".into())),
+            (OperationState::Running, Err("installation_busy".into())),
+            (OperationState::Cancelling, Err("installation_busy".into())),
+            (
+                OperationState::RecoveryRequired,
+                Err("recovery_required".into()),
+            ),
+            (OperationState::Recovered, Err("recovery_required".into())),
+            (OperationState::Cancelled, Err("cancelled".into())),
+            (OperationState::Failed, Err("internal".into())),
+        ] {
+            let mut payload = fixtures::operation_record().into_payload();
+            payload.state = state;
+            payload.phase = if state.terminal() {
+                OperationPhase::Complete
+            } else {
+                OperationPhase::Applying
+            };
+            let operation = OperationRecord::new(payload).unwrap();
+            assert_eq!(
+                require_success(LifecycleOutcome::Existing {
+                    operation: Box::new(operation),
+                }),
+                expected,
+                "replayed state: {state:?}"
+            );
+        }
+        let mut payload = fixtures::operation_record().into_payload();
+        payload.state = OperationState::Failed;
+        let error = fixtures::product_error();
+        let expected = error.code.as_str().to_owned();
+        payload.error = Some(error);
+        assert_eq!(
+            require_success(LifecycleOutcome::Existing {
+                operation: Box::new(OperationRecord::new(payload).unwrap()),
+            }),
+            Err(expected)
+        );
     }
 
     #[test]

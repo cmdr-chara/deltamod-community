@@ -1,3 +1,19 @@
+# Unreleased — Linux QA fixes
+
+- Preserve original files when consecutive patch sessions target different files,
+  extend their verified baseline on first use, and clean session-created files.
+- Give each startup restoration a fresh durable operation identity and preserve
+  failed, unfinished, or recovery-required results when an operation is retried.
+- Restore captured local profiles from their exact cached source after uninstall,
+  while retaining transaction preconditions and compatibility with existing locks.
+- Accept valid solid 7z archives using compression-block accounting without
+  relaxing expanded-size, path, or extraction limits.
+- Make native dialog cancellation immediate, including Linux custom-button results.
+- Correct native desktop CSX support claims and explain the unavailable capability
+  consistently before staging. CSX execution remains disabled until a verified
+  script-execution confinement boundary exists; standalone CLI smoke tests do not
+  establish support in the desktop app.
+
 # Deltamod Community 2.1.0
 
 Minor release with improved macOS mod workflows, native patch and import
@@ -23,7 +39,8 @@ reliability, dependency maintenance, and a refreshed download guide.
 - Windows x64, Linux x64, Intel macOS, and Apple Silicon macOS remain the
   supported packaging targets. See the README for support levels.
 - On macOS, xdelta patches targeting data.win need reference files from
-  a matching Windows game version; .csx patches remain unavailable on ARM Macs.
+  a matching Windows game version. Native desktop .csx execution is unavailable
+  on every platform, including platforms that bundle the standalone CLI.
 - A stable release must pass the cross-platform package/smoke and updater
   signing gates. Windows publisher signing and macOS notarization are not
   provided. Linux .deb updates are manual.

@@ -24,8 +24,9 @@ use deltamod_native_core::{
 };
 #[cfg(any(unix, windows))]
 use deltamod_product_contracts::{
-    LifecycleOperationKind, OperationIntent, OperationRequest, ProviderArtifactKind, ProviderId,
-    ProviderItemKind, ProviderRef, ProviderResourceId, ValidatedRelativePath,
+    LifecycleOperationKind, MutationAction, OperationIntent, OperationRequest, OperationState,
+    ProviderArtifactKind, ProviderId, ProviderItemKind, ProviderRef, ProviderResourceId,
+    ValidatedRelativePath,
 };
 use deltamod_tools_runtime::{
     g3m_apply, g3m_merge, inspect_regular_file, inspect_relative_regular_file,
@@ -806,10 +807,27 @@ impl Runtime {
         if active {
             return Ok(recovered);
         }
-        let operation_id = format!(
-            "patch-startup-{}",
-            &sha2_digest(installation_id.as_bytes())[..32]
-        );
+        // Startup can recover more than one patch session for this installation.
+        // Reusing an old successful operation would only replay that result.
+        // Check durable history as well as adding a nonce: PIDs, wall clocks,
+        // and process-local counters can all repeat across later launches.
+        let operation_id = loop {
+            let nonce = format!(
+                "{installation_id}\0{}\0{}\0{}",
+                now_millis(),
+                std::process::id(),
+                TRANSACTION_SEQUENCE.fetch_add(1, Ordering::Relaxed),
+            );
+            let candidate = format!("patch-startup-{}", &sha2_digest(nonce.as_bytes())[..32]);
+            if runtime
+                .store()
+                .operation_by_id(&lifecycle_restore_operation_id(&candidate))
+                .map_err(|error| Error::Transaction(error.to_string()))?
+                .is_none()
+            {
+                break candidate;
+            }
+        };
         self.uninstall_active_patch_set(&operation_id, &lifecycle.store, &lifecycle.workspace)?;
         Ok(recovered)
     }
@@ -846,61 +864,7 @@ impl Runtime {
         staged
             .verify()
             .map_err(|error| Error::Staging(error.to_string()))?;
-        let (store, mut workspace, installation_id) =
-            self.open_lifecycle_context(lifecycle_store_root, lifecycle_workspace_root)?;
-        let existing = store
-            .manifest(&installation_id)
-            .map_err(|error| Error::Transaction(error.to_string()))?
-            .is_some_and(|manifest| {
-                manifest
-                    .records
-                    .iter()
-                    .any(|record| record.instance_id == "active-patch-set")
-            });
-        let mut runtime = ReleaseARuntime::new(store);
-        let mut files = Vec::with_capacity(staged.artifacts().len());
-        let mut baseline_files = Vec::with_capacity(staged.artifacts().len());
-        for (index, artifact) in staged.artifacts().iter().enumerate() {
-            let source_id = format!("patch-artifact-{index:08}");
-            workspace
-                .register_artifact_source(&source_id, artifact.path())
-                .map_err(|error| Error::Transaction(error.to_string()))?;
-            let path = ValidatedRelativePath::parse(artifact.target().relative_path())
-                .map_err(|_| Error::InvalidTarget)?;
-            if !existing {
-                let destination = self.game_root.join(path.as_str());
-                if destination.exists() {
-                    let original = inspect_regular_file(&destination, MAX_STAGED_ARTIFACT_BYTES)
-                        .map_err(|error| Error::Transaction(error.to_string()))?;
-                    let baseline_source_id = format!("patch-baseline-{index:08}");
-                    workspace
-                        .register_artifact_source(&baseline_source_id, &destination)
-                        .map_err(|error| Error::Transaction(error.to_string()))?;
-                    baseline_files.push(InstallFilePlan {
-                        path: path.clone(),
-                        path_identity_key: lifecycle_path_key(path.as_str(), self.platform),
-                        sha256: original.sha256().to_owned(),
-                        size_bytes: original.size(),
-                        expected_previous_sha256: Some(original.sha256().to_owned()),
-                        source: StagingSource::Artifact {
-                            source_id: baseline_source_id,
-                        },
-                    });
-                }
-            }
-            files.push(InstallFilePlan {
-                path,
-                path_identity_key: lifecycle_path_key(
-                    artifact.target().relative_path(),
-                    self.platform,
-                ),
-                sha256: artifact.sha256().to_owned(),
-                size_bytes: artifact.size(),
-                expected_previous_sha256: None,
-                source: StagingSource::Artifact { source_id },
-            });
-        }
-        if files.is_empty() {
+        if staged.artifacts().is_empty() {
             staged
                 .discard_verified()
                 .map_err(|error| Error::Staging(error.to_string()))?;
@@ -910,9 +874,161 @@ impl Runtime {
                 full_log: String::new(),
             });
         }
+        let (store, mut workspace, installation_id) =
+            self.open_lifecycle_context(lifecycle_store_root, lifecycle_workspace_root)?;
+        let existing = store
+            .manifest(&installation_id)
+            .map_err(|error| Error::Transaction(error.to_string()))?
+            .and_then(|manifest| {
+                manifest
+                    .records
+                    .into_iter()
+                    .find(|record| record.instance_id == "active-patch-set")
+            });
+        if existing
+            .as_ref()
+            .is_some_and(|record| record.version.as_deref() != Some("baseline"))
+        {
+            return Err(Error::Transaction(
+                "patch baseline recovery incomplete".into(),
+            ));
+        }
+        // A leftover that was previously introduced by a patch is not a newly
+        // discovered original. Leave it untouched for explicit recovery/review.
+        let previously_created = store
+            .journals()
+            .map_err(|error| Error::Transaction(error.to_string()))?
+            .into_iter()
+            .filter(|journal| {
+                journal.installation_id == installation_id
+                    && matches!(
+                        journal.operation,
+                        LifecycleOperationKind::Install | LifecycleOperationKind::Update
+                    )
+            })
+            .flat_map(|journal| journal.into_payload().mutations)
+            .filter(|mutation| {
+                mutation.action == MutationAction::Create && mutation.previous_sha256.is_none()
+            })
+            .map(|mutation| mutation.path_identity_key)
+            .collect::<std::collections::BTreeSet<_>>();
+
+        let mut runtime = ReleaseARuntime::new(store);
+        let mut files = BTreeMap::new();
+        let mut baseline_files = BTreeMap::new();
+        if let Some(record) = &existing {
+            for (index, file) in record.files.iter().enumerate() {
+                let original = inspect_relative_regular_file(
+                    &self.game_root,
+                    Path::new(file.path.as_str()),
+                    MAX_STAGED_ARTIFACT_BYTES,
+                )
+                .map_err(|error| Error::Transaction(error.to_string()))?;
+                if !original
+                    .sha256()
+                    .eq_ignore_ascii_case(&file.expected_sha256)
+                {
+                    return Err(Error::Transaction("external_modification".into()));
+                }
+                let source_id = format!("patch-baseline-existing-{index:08}");
+                workspace
+                    .register_artifact_source(&source_id, &self.game_root.join(file.path.as_str()))
+                    .map_err(|error| Error::Transaction(error.to_string()))?;
+                baseline_files.insert(
+                    file.path_identity_key.clone(),
+                    InstallFilePlan {
+                        path: file.path.clone(),
+                        path_identity_key: file.path_identity_key.clone(),
+                        sha256: file.expected_sha256.clone(),
+                        size_bytes: original.size(),
+                        expected_previous_sha256: None,
+                        source: StagingSource::Artifact { source_id },
+                    },
+                );
+            }
+        }
+        let previous_baseline_count = baseline_files.len();
+        for (index, artifact) in staged.artifacts().iter().enumerate() {
+            let source_id = format!("patch-artifact-{index:08}");
+            workspace
+                .register_artifact_source(&source_id, artifact.path())
+                .map_err(|error| Error::Transaction(error.to_string()))?;
+            let path = ValidatedRelativePath::parse(artifact.target().relative_path())
+                .map_err(|_| Error::InvalidTarget)?;
+            let path_key = lifecycle_path_key(path.as_str(), self.platform);
+            if let Some(original) = baseline_files.get(&path_key) {
+                if original.path != path
+                    || !artifact
+                        .expected_target_sha256()
+                        .is_some_and(|hash| hash.eq_ignore_ascii_case(&original.sha256))
+                {
+                    return Err(Error::Transaction("external_modification".into()));
+                }
+            } else if let Some(expected) = artifact.expected_target_sha256() {
+                if previously_created.contains(&path_key) {
+                    return Err(Error::Transaction(
+                        "a previously added patch target still exists; refusing to adopt it as an original".into(),
+                    ));
+                }
+                // First touch adopts only the exact pre-patch bytes witnessed
+                // by staging. Existing baseline hashes are never refreshed.
+                let original = inspect_relative_regular_file(
+                    &self.game_root,
+                    Path::new(path.as_str()),
+                    MAX_STAGED_ARTIFACT_BYTES,
+                )
+                .map_err(|error| Error::Transaction(error.to_string()))?;
+                if !original.sha256().eq_ignore_ascii_case(expected) {
+                    return Err(Error::Transaction("external_modification".into()));
+                }
+                let baseline_source_id = format!("patch-baseline-new-{index:08}");
+                workspace
+                    .register_artifact_source(
+                        &baseline_source_id,
+                        &self.game_root.join(path.as_str()),
+                    )
+                    .map_err(|error| Error::Transaction(error.to_string()))?;
+                baseline_files.insert(
+                    path_key.clone(),
+                    InstallFilePlan {
+                        path: path.clone(),
+                        path_identity_key: path_key.clone(),
+                        sha256: expected.to_owned(),
+                        size_bytes: original.size(),
+                        expected_previous_sha256: Some(expected.to_owned()),
+                        source: StagingSource::Artifact {
+                            source_id: baseline_source_id,
+                        },
+                    },
+                );
+            }
+            files.insert(
+                path_key.clone(),
+                InstallFilePlan {
+                    path,
+                    path_identity_key: path_key,
+                    sha256: artifact.sha256().to_owned(),
+                    size_bytes: artifact.size(),
+                    expected_previous_sha256: None,
+                    source: StagingSource::Artifact { source_id },
+                },
+            );
+        }
         let provider = local_patch_provider()?;
-        let baseline_created = !existing && !baseline_files.is_empty();
-        if baseline_created {
+        let baseline_extended = baseline_files.len() > previous_baseline_count;
+        // Retained originals omitted by this selection remain owned and present.
+        // Only this session's added files disappear when its generation restores.
+        for (key, original) in &baseline_files {
+            files.entry(key.clone()).or_insert_with(|| {
+                let mut original = original.clone();
+                original.expected_previous_sha256 = None;
+                original
+            });
+        }
+        let files = files.into_values().collect::<Vec<_>>();
+        if baseline_extended {
+            check_cancel(&cancelled)?;
+            let baseline_files = baseline_files.into_values().collect::<Vec<_>>();
             let baseline_operation = format!(
                 "patch-baseline-{}",
                 &sha2_digest(operation_id.as_bytes())[..32]
@@ -922,7 +1038,11 @@ impl Runtime {
                 &baseline_operation,
                 OperationIntent {
                     installation_id: installation_id.clone(),
-                    kind: LifecycleOperationKind::Install,
+                    kind: if existing.is_some() {
+                        LifecycleOperationKind::Update
+                    } else {
+                        LifecycleOperationKind::Install
+                    },
                     mod_instance_id: Some("active-patch-set".into()),
                     provider: Some(provider.clone()),
                     archive_sha256: None,
@@ -944,13 +1064,21 @@ impl Runtime {
                 baseline_files,
             )
             .map_err(|error| Error::Transaction(error.to_string()))?;
-            require_lifecycle_success(runtime.install(
-                baseline_plan,
-                lifecycle_identity(&baseline_operation, "adopt"),
-                &mut workspace,
-            ))?;
+            let identity = lifecycle_identity(&baseline_operation, "adopt");
+            let outcome = if existing.is_some() {
+                runtime.update(baseline_plan, identity, &mut workspace)
+            } else {
+                runtime.install(baseline_plan, identity, &mut workspace)
+            };
+            require_lifecycle_success(outcome)?;
         }
-        let is_update = existing || baseline_created;
+        // Adoption is manifest-only. Recheck the staging identities after it,
+        // then let lifecycle publication enforce its own no-follow/hash CAS.
+        staged
+            .verify()
+            .map_err(|error| Error::Staging(error.to_string()))?;
+        check_cancel(&cancelled)?;
+        let is_update = existing.is_some() || baseline_extended;
         let kind = if is_update {
             LifecycleOperationKind::Update
         } else {
@@ -1134,10 +1262,7 @@ impl Runtime {
             return Ok(());
         }
         let mut runtime = ReleaseARuntime::new(store);
-        let restore_operation = format!(
-            "patch-restore-{}",
-            &sha2_digest(operation_id.as_bytes())[..32]
-        );
+        let restore_operation = lifecycle_restore_operation_id(operation_id);
         let request = OperationRequest::new(
             &restore_operation,
             &restore_operation,
@@ -1928,6 +2053,14 @@ fn local_patch_provider() -> Result<ProviderRef, Error> {
 }
 
 #[cfg(any(unix, windows))]
+fn lifecycle_restore_operation_id(operation_id: &str) -> String {
+    format!(
+        "patch-restore-{}",
+        &sha2_digest(operation_id.as_bytes())[..32]
+    )
+}
+
+#[cfg(any(unix, windows))]
 fn lifecycle_identity(operation_id: &str, phase: &str) -> ExecutionIdentity {
     ExecutionIdentity {
         owner_instance_id: format!("tauri-{}", std::process::id()),
@@ -1941,7 +2074,32 @@ fn lifecycle_identity(operation_id: &str, phase: &str) -> ExecutionIdentity {
 #[cfg(any(unix, windows))]
 fn require_lifecycle_success(outcome: LifecycleOutcome) -> Result<(), Error> {
     match outcome {
-        LifecycleOutcome::Succeeded { .. } | LifecycleOutcome::Existing { .. } => Ok(()),
+        LifecycleOutcome::Succeeded { .. } => Ok(()),
+        LifecycleOutcome::Existing { operation } => {
+            if operation.state == OperationState::Succeeded {
+                Ok(())
+            } else {
+                Err(Error::Transaction(
+                    operation
+                        .error
+                        .as_ref()
+                        .map_or(
+                            match operation.state {
+                                OperationState::Queued
+                                | OperationState::Running
+                                | OperationState::Cancelling => "installation_busy",
+                                OperationState::RecoveryRequired | OperationState::Recovered => {
+                                    "recovery_required"
+                                }
+                                OperationState::Cancelled => "cancelled",
+                                OperationState::Failed | OperationState::Succeeded => "internal",
+                            },
+                            |error| error.code.as_str(),
+                        )
+                        .into(),
+                ))
+            }
+        }
         LifecycleOutcome::Busy { error, .. }
         | LifecycleOutcome::Rejected { error, .. }
         | LifecycleOutcome::RecoveryRequired { error, .. } => {
@@ -2534,6 +2692,272 @@ name = "Test"
             .unwrap();
         assert_eq!(fs::read(game.join("data.win")).unwrap(), b"original");
         assert!(!game.join(JOURNAL_NAME).exists());
+    }
+
+    #[cfg(any(unix, windows))]
+    struct LifecyclePatchFixture {
+        root: tempfile::TempDir,
+        lifecycle: LifecycleStorageRoots,
+    }
+
+    #[cfg(any(unix, windows))]
+    impl LifecyclePatchFixture {
+        fn new() -> Self {
+            let root = tempfile::tempdir().unwrap();
+            fs::create_dir(root.path().join("game")).unwrap();
+            fs::create_dir(root.path().join("mods")).unwrap();
+            fs::write(root.path().join("game/data.win"), b"original game").unwrap();
+            fs::write(root.path().join("game/options.ini"), b"original options").unwrap();
+            let lifecycle = LifecycleStorageRoots {
+                store: root.path().join("lifecycle-store"),
+                workspace: root.path().join("lifecycle-workspaces"),
+            };
+            Self { root, lifecycle }
+        }
+
+        fn runtime(&self) -> Runtime {
+            Runtime {
+                game_root: self.root.path().join("game"),
+                mod_root: self.root.path().join("mods"),
+                tools_root: self.root.path().join("tools"),
+                hash_cache_path: self.root.path().join("hash.json"),
+                reference_root: None,
+                platform: PatchPlatform::Win32,
+                platform_name: "win32".into(),
+                arch: "x64".into(),
+                definition: PlatformDefinition {
+                    data_files: vec!["data.win".into()],
+                    patch_layout: "windows-root".into(),
+                    content_root: None,
+                },
+            }
+        }
+
+        fn add_mod(&self, id: &str, target: &str, bytes: &[u8]) {
+            let packet = self.root.path().join("mods").join(id);
+            fs::create_dir_all(&packet).unwrap();
+            fs::write(packet.join("payload.bin"), bytes).unwrap();
+            fs::write(
+                packet.join("__deltaID.json"),
+                serde_json::to_vec(&serde_json::json!({"uniqueId": id})).unwrap(),
+            )
+            .unwrap();
+            fs::write(packet.join("meta.toml"), "[metadata]\nname='Test'\n").unwrap();
+            fs::write(
+                packet.join("modding.xml"),
+                format!(
+                    "<root><patch type=\"override\" patch=\"payload.bin\" to=\"{target}\"/></root>"
+                ),
+            )
+            .unwrap();
+        }
+
+        // Every call constructs a new adapter and reopens its durable store.
+        fn apply(&self, ids: &[&str], operation: &str) -> Result<PatchResult, Error> {
+            self.runtime().patch_staged_lifecycle(
+                &ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>(),
+                operation,
+                &self.lifecycle.store,
+                &self.lifecycle.workspace,
+                |_| {},
+                || false,
+            )
+        }
+
+        fn restore(&self, operation: &str) -> Result<(), Error> {
+            self.runtime().uninstall_active_patch_set(
+                operation,
+                &self.lifecycle.store,
+                &self.lifecycle.workspace,
+            )
+        }
+
+        fn read(&self, path: &str) -> Vec<u8> {
+            fs::read(self.root.path().join("game").join(path)).unwrap()
+        }
+
+        fn assert_originals(&self) {
+            assert_eq!(self.read("data.win"), b"original game");
+            assert_eq!(self.read("options.ini"), b"original options");
+        }
+
+        fn assert_absent(&self, path: &str) {
+            assert!(!self.root.path().join("game").join(path).exists());
+        }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_changing_targets_preserves_originals_after_reopen() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("options", "options.ini", b"modded options");
+        fixture.add_mod("data", "data.win", b"modded game");
+        fixture.add_mod("marker", "marker.txt", b"temporary marker");
+        fixture.add_mod("second-marker", "second.txt", b"second temporary marker");
+
+        fixture
+            .apply(&["options", "marker"], "first-session")
+            .unwrap();
+        assert_eq!(fixture.read("options.ini"), b"modded options");
+        assert_eq!(fixture.read("data.win"), b"original game");
+        assert_eq!(fixture.read("marker.txt"), b"temporary marker");
+        fixture.restore("first-exit").unwrap();
+        fixture.assert_originals();
+        fixture.assert_absent("marker.txt");
+
+        fixture
+            .apply(&["data", "second-marker"], "second-session")
+            .unwrap();
+        assert_eq!(fixture.read("data.win"), b"modded game");
+        assert_eq!(fixture.read("options.ini"), b"original options");
+        assert_eq!(fixture.read("second.txt"), b"second temporary marker");
+        fixture.assert_absent("marker.txt");
+        fixture.restore("second-exit").unwrap();
+        fixture.assert_originals();
+        fixture.assert_absent("marker.txt");
+        fixture.assert_absent("second.txt");
+
+        fixture.apply(&["marker"], "third-session").unwrap();
+        fixture.assert_originals();
+        assert_eq!(fixture.read("marker.txt"), b"temporary marker");
+        fixture.restore("third-exit").unwrap();
+        fixture.assert_originals();
+        fixture.assert_absent("marker.txt");
+        fixture.assert_absent("second.txt");
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_new_file_session_keeps_unselected_original() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("options", "options.ini", b"modded options");
+        fixture.add_mod("marker", "marker.txt", b"temporary marker");
+        fixture.apply(&["options"], "original-session").unwrap();
+        fixture.restore("original-exit").unwrap();
+        fixture.apply(&["marker"], "new-file-session").unwrap();
+        fixture.assert_originals();
+        fixture.restore("new-file-exit").unwrap();
+        fixture.assert_originals();
+        fixture.assert_absent("marker.txt");
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_repeated_startup_recovery_cleans_each_session() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("options", "options.ini", b"modded options");
+        fixture.add_mod("marker", "marker.txt", b"temporary marker");
+        for operation in ["before-first-restart", "before-second-restart"] {
+            fixture.apply(&["options", "marker"], operation).unwrap();
+            assert_eq!(fixture.read("options.ini"), b"modded options");
+            assert_eq!(fixture.read("marker.txt"), b"temporary marker");
+            fixture
+                .runtime()
+                .recover_startup_lifecycle(&fixture.lifecycle)
+                .unwrap();
+            fixture.assert_originals();
+            fixture.assert_absent("marker.txt");
+        }
+        let recoveries = DurableLifecycleStore::open(&fixture.lifecycle.store)
+            .unwrap()
+            .operations()
+            .unwrap()
+            .into_iter()
+            .filter(|operation| operation.request.intent().kind == LifecycleOperationKind::Recover)
+            .collect::<Vec<_>>();
+        assert_eq!(recoveries.len(), 2);
+        assert!(recoveries
+            .iter()
+            .all(|operation| operation.state == OperationState::Succeeded));
+        assert_ne!(
+            recoveries[0].request.operation_id(),
+            recoveries[1].request.operation_id()
+        );
+        assert!(recoveries
+            .iter()
+            .all(|operation| operation.request.operation_id().len() <= 128));
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_owned_original_change_is_not_readopted() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("options", "options.ini", b"modded options");
+        fixture.add_mod("data", "data.win", b"modded game");
+        fixture
+            .apply(&["options"], "before-external-change")
+            .unwrap();
+        fixture.restore("exit-before-external-change").unwrap();
+        fs::write(
+            fixture.root.path().join("game/options.ini"),
+            b"external edit",
+        )
+        .unwrap();
+        assert!(fixture.apply(&["data"], "after-external-change").is_err());
+        assert_eq!(fixture.read("options.ini"), b"external edit");
+        assert_eq!(fixture.read("data.win"), b"original game");
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_first_touch_change_after_staging_is_rejected() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("data", "data.win", b"modded game");
+        let runtime = fixture.runtime();
+        let result = runtime.patch_staged_lifecycle(
+            &["data".into()],
+            "changed-during-staging",
+            &fixture.lifecycle.store,
+            &fixture.lifecycle.workspace,
+            |progress| {
+                if progress.phase == "staging" {
+                    fs::write(runtime.game_root.join("data.win"), b"external edit").unwrap();
+                }
+            },
+            || false,
+        );
+        assert!(result.is_err());
+        assert_eq!(fixture.read("data.win"), b"external edit");
+        assert_eq!(fixture.read("options.ini"), b"original options");
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_failed_restore_replay_remains_an_error() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("marker", "marker.txt", b"temporary marker");
+        fixture.apply(&["marker"], "marker-session").unwrap();
+        fs::write(
+            fixture.root.path().join("game/marker.txt"),
+            b"external edit",
+        )
+        .unwrap();
+        assert!(fixture.restore("marker-exit").is_err());
+        assert!(fixture.restore("marker-exit").is_err());
+        assert_eq!(fixture.read("marker.txt"), b"external edit");
+        fixture.assert_originals();
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn lifecycle_previous_added_target_is_not_adopted_as_an_original() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("marker", "marker.txt", b"temporary marker");
+        fixture
+            .apply(&["marker"], "first-added-file-session")
+            .unwrap();
+        fixture.restore("first-added-file-exit").unwrap();
+        fixture.assert_absent("marker.txt");
+        fs::write(
+            fixture.root.path().join("game/marker.txt"),
+            b"unclaimed leftover",
+        )
+        .unwrap();
+        assert!(fixture
+            .apply(&["marker"], "later-added-file-session")
+            .is_err());
+        assert_eq!(fixture.read("marker.txt"), b"unclaimed leftover");
+        fixture.assert_originals();
     }
 
     #[cfg(unix)]

@@ -36,7 +36,7 @@
 - **More reliable mod browsing.** Improvements to provider shop handling, GameBanana comments, and UI localization.
 - **Dependency and security updates.** Refreshed React, Tauri, Vite, Vitest, Playwright, Rust dependencies, and CI actions, including high-severity npm audit remediations.
 
-On Apple Silicon, UndertaleModTool `.csx` patches remain unsupported. macOS mods targeting Windows `data.win` require matching Windows reference files.
+CSX script mods are currently unavailable in the native desktop app on every platform. Use xdelta/G3M patches or file replacements. macOS mods targeting Windows `data.win` require matching Windows reference files.
 
 ## Why Deltamod Community?
 
@@ -169,7 +169,7 @@ Deltamod Community includes community themes and eight interface languages.
 | macOS Intel | **Experimental** | Native app; xdelta/G3M patches need Windows reference files |
 | Wine / CrossOver | **Unofficial** | May work, but is not a release target |
 
-UndertaleModTool `.csx` patches are supported on Windows x64, Linux x64, and Intel Macs. The required upstream CLI is not currently available for Apple Silicon.
+**Patch formats:** the native desktop app supports file replacements and xdelta/G3M patches. **UndertaleModTool `.csx` script mods are currently unavailable on all platforms.** The app rejects these mods before applying them or launching the game; use an xdelta/G3M or file-replacement edition when available. Bundling the upstream CLI on Windows x64, Linux x64, and Intel Macs does not enable CSX execution in the app. The upstream CLI is also unavailable for Apple Silicon.
 
 ### Patching on macOS
 
@@ -198,7 +198,7 @@ Nexus Premium members can download compatible archives through the API. Nexus ma
 - Use mods from authors and sources you trust.
 - Check that each mod supports your exact game version.
 - Avoid combining mods unless their authors say they are compatible.
-- Treat `.csx` patches as executable scripts and review their source or trustworthiness before running them.
+- CSX patches contain executable scripts. The native app currently refuses them; importing an archive does not enable script execution.
 
 Deltamod adds validation, staging, and recovery around supported operations, but these safeguards do not replace your own backup.
 

@@ -977,7 +977,12 @@ impl ProfileSwitchPlan {
                 || plan.metadata().provider != target.target.provider
                 || plan.metadata().archive_sha256.as_deref()
                     != Some(target.target.archive_sha256.as_str())
-                || plan.fingerprint() != target.target.file_plan_fingerprint
+                || plan.source_fingerprint() != target.target.file_plan_fingerprint
+                // A stable source identity cannot authorize new adoption
+                // preconditions absent from the frozen profile. Preserve the
+                // original full-plan binding whenever adoption is requested.
+                || (plan.files().iter().any(|file| file.expected_previous_sha256.is_some())
+                    && plan.fingerprint() != target.target.file_plan_fingerprint)
             {
                 errors.push(ProfilePreflightError::ExactIdentityMismatch {
                     instance_id: expected.instance_id.clone(),

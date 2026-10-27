@@ -619,6 +619,62 @@ impl OsLifecycleWorkspace {
         }
     }
 
+    // Called only after a guarded publication/restoration transition has been
+    // validated. Observation and preflight must remain free of side effects.
+    fn prepare_missing_destination_parent(
+        &self,
+        destination: &OsObservation,
+    ) -> Result<Option<OsObservation>, FilesystemBoundaryError> {
+        if destination.snapshot.state != ObservedFileState::Missing {
+            return Ok(None);
+        }
+        self.ensure_current(destination)?;
+        #[cfg(unix)]
+        if destination.parent_pin.is_some() {
+            // Never exchange an existing parent pin for a newly opened object.
+            return Ok(None);
+        }
+        if destination.root != self.transaction_root
+            || destination.snapshot.root_identity != self.transaction_identity
+        {
+            return Err(FilesystemBoundaryError::RootIdentityChanged);
+        }
+        let relative = Path::new(destination.snapshot.path.as_str());
+        #[cfg(unix)]
+        let parent_pin = create_safe_parents_from_pin(&self.transaction_root_pin, relative)?;
+        #[cfg(windows)]
+        create_safe_parents_pinned(
+            &destination.root,
+            &destination.snapshot.root_identity,
+            relative,
+        )?;
+
+        self.ensure_current(destination)?;
+        let refreshed = self.observe_at(
+            &destination.root,
+            &destination.snapshot.root_identity,
+            &destination.snapshot.path,
+        )?;
+        if refreshed.snapshot.state != destination.snapshot.state
+            || refreshed.snapshot.path_identity_key != destination.snapshot.path_identity_key
+        {
+            return Err(FilesystemBoundaryError::ObservationChanged);
+        }
+        #[cfg(unix)]
+        let refreshed = {
+            parent_pin.verify(
+                &destination
+                    .root
+                    .join(relative.parent().unwrap_or(Path::new(""))),
+            )?;
+            OsObservation {
+                parent_pin: Some(parent_pin),
+                ..refreshed
+            }
+        };
+        Ok(Some(refreshed))
+    }
+
     fn receipt(
         guard: &impl LifecycleMutationGuard,
         destination: &OsObservation,
@@ -902,6 +958,10 @@ impl<'guard> LifecycleFilesystemBoundary<DurableMutationGuard<'guard>> for OsLif
         self.ensure_current(staged)?;
         self.ensure_current(destination)?;
         let sha256 = transition.validate_publication(&staged.snapshot, &destination.snapshot)?;
+        let prepared_destination = self.prepare_missing_destination_parent(destination)?;
+        let destination = prepared_destination.as_ref().unwrap_or(destination);
+        self.ensure_current(destination)?;
+        transition.validate_publication(&staged.snapshot, &destination.snapshot)?;
         publish_from_observation(
             staged,
             destination,
@@ -953,6 +1013,10 @@ impl<'guard> LifecycleFilesystemBoundary<DurableMutationGuard<'guard>> for OsLif
         self.ensure_current(destination)?;
         let sha256 =
             transition.validate_backup_restoration(&backup.snapshot, &destination.snapshot)?;
+        let prepared_destination = self.prepare_missing_destination_parent(destination)?;
+        let destination = prepared_destination.as_ref().unwrap_or(destination);
+        self.ensure_current(destination)?;
+        transition.validate_backup_restoration(&backup.snapshot, &destination.snapshot)?;
         publish_from_observation(
             backup,
             destination,
@@ -1604,30 +1668,75 @@ fn verify_ancestors(root: &Path, relative: &Path) -> Result<(), FilesystemBounda
 
 #[cfg(windows)]
 fn create_safe_parents(root: &Path, relative: &Path) -> Result<(), FilesystemBoundaryError> {
-    let mut current = root.to_owned();
+    create_safe_parents_pinned(root, &root_identity(root)?, relative)
+}
+
+#[cfg(windows)]
+fn create_safe_parents_pinned(
+    root: &Path,
+    expected: &RootIdentity,
+    relative: &Path,
+) -> Result<(), FilesystemBoundaryError> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    validate_relative_components(relative)?;
+    // Same directory capabilities required by fence-windows MutationRoot:
+    // list/add file/add subdirectory/delete child/traverse/read attributes.
+    const DIRECTORY_MUTATION_ACCESS: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0040 | 0x0020 | 0x0080;
+    const BACKUP_SEMANTICS_NO_FOLLOW: u32 = 0x0200_0000 | 0x0020_0000;
+    let opened = fs::OpenOptions::new()
+        .read(true)
+        .access_mode(DIRECTORY_MUTATION_ACCESS)
+        .custom_flags(BACKUP_SEMANTICS_NO_FOLLOW)
+        .open(root)
+        .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?;
+    let identity =
+        crate::store_identity::verify_opened_path(root, &opened, StoreObjectKind::Directory)
+            .map_err(map_identity)?;
+    if root_identity_from_object(root, &identity) != *expected {
+        return Err(FilesystemBoundaryError::RootIdentityChanged);
+    }
+    let mut current = fence_windows::DirectoryHandle::from_directory_file(opened)
+        .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?;
     for component in relative.parent().unwrap_or(Path::new("")).components() {
         let Component::Normal(component) = component else {
             return Err(FilesystemBoundaryError::UnsafeAlias);
         };
-        current.push(component);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata)
-                if metadata.is_dir()
-                    && !metadata.file_type().is_symlink()
-                    && !is_reparse(&metadata) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                fs::create_dir(&current).map_err(|_| FilesystemBoundaryError::Io)?
-            }
-            _ => return Err(FilesystemBoundaryError::UnsafeAlias),
+        let exists = current
+            .entries()
+            .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?
+            .iter()
+            .any(|entry| entry.name == component);
+        if !exists {
+            current
+                .create_new_directory(component)
+                .map_err(|_| FilesystemBoundaryError::ObservationChanged)?;
         }
+        current = current
+            .open_mutation_directory(component)
+            .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?;
     }
     Ok(())
 }
 
 #[cfg(unix)]
 fn create_safe_parents(root: &Path, relative: &Path) -> Result<(), FilesystemBoundaryError> {
+    create_safe_parents_from_pin(&UnixDirectoryPin::open(root)?, relative).map(|_| ())
+}
+
+#[cfg(unix)]
+fn create_safe_parents_from_pin(
+    root: &UnixDirectoryPin,
+    relative: &Path,
+) -> Result<UnixDirectoryPin, FilesystemBoundaryError> {
     validate_relative_components(relative)?;
-    let mut current = UnixDirectoryPin::open(root)?.opened;
+    let mut current = UnixDirectoryPin {
+        opened: root
+            .opened
+            .try_clone()
+            .map_err(|_| FilesystemBoundaryError::Io)?,
+        identity: root.identity.clone(),
+    };
     for component in relative.parent().unwrap_or(Path::new("")).components() {
         let Component::Normal(component) = component else {
             return Err(FilesystemBoundaryError::UnsafeAlias);
@@ -1636,31 +1745,39 @@ fn create_safe_parents(root: &Path, relative: &Path) -> Result<(), FilesystemBou
             | rustix::fs::OFlags::DIRECTORY
             | rustix::fs::OFlags::NOFOLLOW
             | rustix::fs::OFlags::CLOEXEC;
-        let descriptor =
-            match rustix::fs::openat(&current, component, flags, rustix::fs::Mode::empty()) {
-                Ok(descriptor) => descriptor,
-                Err(rustix::io::Errno::NOENT) => {
-                    rustix::fs::mkdirat(
-                        &current,
-                        component,
-                        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR | rustix::fs::Mode::XUSR,
-                    )
-                    .or_else(|error| {
-                        (error == rustix::io::Errno::EXIST)
-                            .then_some(())
-                            .ok_or(error)
-                    })
-                    .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?;
-                    rustix::fs::openat(&current, component, flags, rustix::fs::Mode::empty())
-                        .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?
-                }
-                Err(_) => return Err(FilesystemBoundaryError::UnsafeAlias),
-            };
+        let descriptor = match rustix::fs::openat(
+            &current.opened,
+            component,
+            flags,
+            rustix::fs::Mode::empty(),
+        ) {
+            Ok(descriptor) => descriptor,
+            Err(rustix::io::Errno::NOENT) => {
+                rustix::fs::mkdirat(
+                    &current.opened,
+                    component,
+                    rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR | rustix::fs::Mode::XUSR,
+                )
+                .or_else(|error| {
+                    (error == rustix::io::Errno::EXIST)
+                        .then_some(())
+                        .ok_or(error)
+                })
+                .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?;
+                current
+                    .opened
+                    .sync_all()
+                    .map_err(|_| FilesystemBoundaryError::Io)?;
+                rustix::fs::openat(&current.opened, component, flags, rustix::fs::Mode::empty())
+                    .map_err(|_| FilesystemBoundaryError::UnsafeAlias)?
+            }
+            Err(_) => return Err(FilesystemBoundaryError::UnsafeAlias),
+        };
         let opened = fs::File::from(descriptor);
-        inspect_opened(&opened, StoreObjectKind::Directory).map_err(map_identity)?;
-        current = opened;
+        let identity = inspect_opened(&opened, StoreObjectKind::Directory).map_err(map_identity)?;
+        current = UnixDirectoryPin { opened, identity };
     }
-    Ok(())
+    Ok(current)
 }
 
 fn remove_generated_tree(root: &Path) -> Result<(), FilesystemBoundaryError> {
@@ -1795,6 +1912,29 @@ fn is_reparse(_metadata: &fs::Metadata) -> bool {
 #[cfg(test)]
 mod persisted_root_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_parent_creation_never_refreshes_a_replaced_existing_pin() {
+        let root = tempfile::tempdir().unwrap();
+        let game = root.path().join("game");
+        let work = root.path().join("work");
+        fs::create_dir_all(game.join("parent")).unwrap();
+        fs::create_dir(&work).unwrap();
+        let workspace = OsLifecycleWorkspace::open(game.clone(), work).unwrap();
+        let expected = workspace.transaction_root_identity().unwrap();
+        let path = ValidatedRelativePath::parse("parent/new.dat").unwrap();
+        let observed = workspace.observe_at(&game, &expected, &path).unwrap();
+        assert!(observed.parent_pin.is_some());
+        fs::rename(game.join("parent"), game.join("previous-parent")).unwrap();
+        fs::create_dir(game.join("parent")).unwrap();
+        assert!(matches!(
+            workspace.prepare_missing_destination_parent(&observed),
+            Err(FilesystemBoundaryError::RootIdentityChanged)
+        ));
+        assert!(!game.join("parent/new.dat").exists());
+        assert!(!game.join("previous-parent/new.dat").exists());
+    }
 
     #[test]
     fn legacy_root_matching_requires_the_same_path_and_file_on_macos_only() {

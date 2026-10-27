@@ -77,6 +77,7 @@ pub struct ValidatedInstallPlan {
     metadata: InstallMetadata,
     files: Vec<InstallFilePlan>,
     fingerprint: String,
+    source_fingerprint: String,
 }
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
@@ -91,6 +92,8 @@ pub enum PlanError {
     DuplicateFile,
     #[error("file plan fingerprint does not match the frozen operation intent")]
     FingerprintMismatch,
+    #[error("file source fingerprint does not match the exact desired files")]
+    SourceFingerprintMismatch,
     #[error("file plan size overflow")]
     SizeOverflow,
 }
@@ -149,8 +152,27 @@ impl ValidatedInstallPlan {
             request,
             metadata,
             files,
+            source_fingerprint: fingerprint.clone(),
             fingerprint,
         })
+    }
+
+    /// Bind the persistent source identity independently of this operation's
+    /// existing-file preconditions. Accept the stable content identity or the
+    /// historical adapter identity that adopted every file at its exact hash.
+    /// Neither form changes the validated request or grants adoption permission.
+    pub fn with_source_fingerprint(mut self, expected: &str) -> Result<Self, PlanError> {
+        if !file_source_fingerprint(&self.files).eq_ignore_ascii_case(expected) {
+            let mut adopted = self.files.clone();
+            for file in &mut adopted {
+                file.expected_previous_sha256 = Some(file.sha256.to_ascii_lowercase());
+            }
+            if !file_plan_fingerprint(&adopted).eq_ignore_ascii_case(expected) {
+                return Err(PlanError::SourceFingerprintMismatch);
+            }
+        }
+        self.source_fingerprint = expected.to_owned();
+        Ok(self)
     }
 
     #[must_use]
@@ -171,6 +193,13 @@ impl ValidatedInstallPlan {
     #[must_use]
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
+    }
+
+    /// Exact desired-file identity published in the installed record. Existing
+    /// callers retain their original plan identity unless explicitly rebound.
+    #[must_use]
+    pub fn source_fingerprint(&self) -> &str {
+        &self.source_fingerprint
     }
 
     #[must_use]
@@ -236,6 +265,18 @@ pub fn file_plan_fingerprint(files: &[InstallFilePlan]) -> String {
         );
     }
     hex_digest(&bytes)
+}
+
+/// Stable identity for desired paths, content hashes and sizes. Reuse the v2
+/// no-adoption form so existing ordinary install/profile identities stay valid;
+/// operation fingerprints still include their existing-file preconditions.
+#[must_use]
+pub fn file_source_fingerprint(files: &[InstallFilePlan]) -> String {
+    let mut desired = files.to_vec();
+    for file in &mut desired {
+        file.expected_previous_sha256 = None;
+    }
+    file_plan_fingerprint(&desired)
 }
 
 pub(crate) fn hex_digest(bytes: &[u8]) -> String {

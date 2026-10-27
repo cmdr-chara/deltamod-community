@@ -909,6 +909,7 @@ fn inventory_seven(
     if archive.files.len() > limits.max_entries {
         return Err(ImportError::Limit("archive entry count limit exceeded"));
     }
+    validate_seven_block_ratios(&archive, limits, cancelled)?;
     archive
         .files
         .iter()
@@ -924,7 +925,12 @@ fn inventory_seven(
                 path,
                 folded,
                 size: entry.size(),
-                compressed: Some(entry.compressed_size),
+                // A solid block shares compressed bytes among its members. The
+                // reader assigns a packed size only to the first member; zero
+                // on later members does not mean an invalid compressed stream.
+                // Ratios are checked once per block above, including non-solid
+                // single-file blocks. Individual expanded sizes remain bounded.
+                compressed: None,
                 kind: if entry.is_directory() {
                     EntryKind::Directory
                 } else {
@@ -933,6 +939,46 @@ fn inventory_seven(
             })
         })
         .collect()
+}
+
+fn validate_seven_block_ratios(
+    archive: &SevenArchive,
+    limits: Limits,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), ImportError> {
+    let starts = archive.stream_map.block_first_pack_stream_index();
+    if starts.len() != archive.blocks.len() {
+        return Err(ImportError::Format("7z block stream map mismatch".into()));
+    }
+    for (index, block) in archive.blocks.iter().enumerate() {
+        check_cancelled(cancelled)?;
+        // Multiple packed streams can feed one block (for example BCJ2).
+        // Count those bytes once, rather than once per extracted member.
+        let end = starts
+            .get(index + 1)
+            .copied()
+            .unwrap_or(archive.pack_sizes().len());
+        let streams = archive
+            .pack_sizes()
+            .get(starts[index]..end)
+            .filter(|streams| !streams.is_empty())
+            .ok_or_else(|| ImportError::Format("7z block stream range is invalid".into()))?;
+        let compressed = streams.iter().try_fold(0_u64, |total, size| {
+            total
+                .checked_add(*size)
+                .ok_or(ImportError::Limit("compressed block size overflow"))
+        })?;
+        let expanded = block.get_unpack_size();
+        if compressed == 0 && expanded > 0 {
+            return Err(ImportError::Limit("invalid compressed block size"));
+        }
+        if u128::from(expanded) > u128::from(compressed) * u128::from(limits.max_ratio) {
+            return Err(ImportError::Limit(
+                "7z block compression ratio limit exceeded",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn extract(
@@ -1793,6 +1839,112 @@ mod tests {
         assert!(result.destination.join("meta.toml").is_file());
     }
 
+    // Harmless self-authored fixtures produced by 7-Zip 23.01, not by the reader
+    // under test. Recreate from the three contents asserted below with:
+    // 7z a -t7z -m0=lzma2 -mx=5 -ms=on (or off) -mtm=off -mtc=off -mta=off
+    //   -mhc=off fixture.7z mod/meta.toml mod/modding.xml mod/payload.txt
+    // Inline bytes keep the shared-block regression portable without a 7z binary.
+    const SEVEN_SOLID_FIXTURE: &[u8] = &[
+        0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04, 0xda, 0xca, 0x8c, 0x36, 0xa3, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xae, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x96, 0x97,
+        0x34, 0x6a, 0xe0, 0x00, 0xb8, 0x00, 0x9b, 0x5d, 0x00, 0x2d, 0x9b, 0x48, 0xa7, 0x77, 0x64,
+        0x0c, 0x41, 0x5b, 0xd5, 0xc7, 0x48, 0xee, 0xe7, 0xb9, 0xea, 0x67, 0xe1, 0xd5, 0x4b, 0x1c,
+        0x22, 0x02, 0x2c, 0x6c, 0xe3, 0x2e, 0xc5, 0xb0, 0x3e, 0xac, 0xe6, 0x42, 0xd6, 0x7d, 0x81,
+        0x62, 0xa4, 0x09, 0x05, 0x5a, 0x30, 0x00, 0xf6, 0x58, 0xd2, 0x4a, 0xe1, 0x4c, 0x7d, 0xe3,
+        0x08, 0x6d, 0x2c, 0xe2, 0xf2, 0x5a, 0x59, 0x9a, 0xa9, 0x65, 0x27, 0x37, 0x4a, 0x4c, 0x27,
+        0xf4, 0x6f, 0xde, 0x8b, 0x80, 0x22, 0x99, 0x25, 0xfd, 0x41, 0x89, 0x7e, 0x5f, 0x75, 0x3c,
+        0xae, 0xf1, 0xfb, 0x77, 0x73, 0x4f, 0x53, 0x5a, 0x24, 0x31, 0x56, 0x86, 0xc7, 0xe6, 0x71,
+        0x17, 0xac, 0xe9, 0x34, 0xc1, 0x59, 0x4a, 0x0f, 0xb0, 0x3f, 0x23, 0x52, 0x05, 0x3f, 0x4e,
+        0x8e, 0xf2, 0x83, 0x5e, 0x0a, 0x70, 0xdf, 0xf0, 0xe6, 0x24, 0xea, 0xd1, 0x72, 0xc9, 0x39,
+        0x9f, 0x89, 0x8b, 0x22, 0x23, 0x39, 0xfd, 0x95, 0xc0, 0x1b, 0xc1, 0x73, 0x7b, 0x23, 0xb0,
+        0x4e, 0xe1, 0xdb, 0x57, 0xe7, 0x2b, 0x89, 0xcf, 0x5e, 0x4e, 0xab, 0xcb, 0x0f, 0x16, 0x00,
+        0x01, 0x04, 0x06, 0x00, 0x01, 0x09, 0x80, 0xa3, 0x00, 0x07, 0x0b, 0x01, 0x00, 0x01, 0x21,
+        0x21, 0x01, 0x00, 0x0c, 0x80, 0xb9, 0x00, 0x08, 0x0d, 0x03, 0x09, 0x47, 0x47, 0x0a, 0x01,
+        0xa0, 0x94, 0x24, 0x3c, 0xa4, 0x3d, 0x2b, 0x81, 0xed, 0x2a, 0x9b, 0xbf, 0x00, 0x00, 0x05,
+        0x03, 0x19, 0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x11, 0x5d, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x6d, 0x00, 0x65,
+        0x00, 0x74, 0x00, 0x61, 0x00, 0x2e, 0x00, 0x74, 0x00, 0x6f, 0x00, 0x6d, 0x00, 0x6c, 0x00,
+        0x00, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64,
+        0x00, 0x64, 0x00, 0x69, 0x00, 0x6e, 0x00, 0x67, 0x00, 0x2e, 0x00, 0x78, 0x00, 0x6d, 0x00,
+        0x6c, 0x00, 0x00, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x70, 0x00, 0x61,
+        0x00, 0x79, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x61, 0x00, 0x64, 0x00, 0x2e, 0x00, 0x74, 0x00,
+        0x78, 0x00, 0x74, 0x00, 0x00, 0x00, 0x15, 0x0e, 0x01, 0x00, 0x20, 0x80, 0xa4, 0x81, 0x20,
+        0x80, 0xa4, 0x81, 0x20, 0x80, 0xa4, 0x81, 0x00, 0x00,
+    ];
+
+    const SEVEN_NONSOLID_FIXTURE: &[u8] = &[
+        0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04, 0x55, 0xa7, 0x60, 0x02, 0xc3, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xae, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0xb3,
+        0xa1, 0x76, 0x01, 0x00, 0x46, 0x5b, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x5d,
+        0x0a, 0x70, 0x61, 0x63, 0x6b, 0x61, 0x67, 0x65, 0x49, 0x44, 0x3d, 0x27, 0x65, 0x78, 0x61,
+        0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x73, 0x6f, 0x6c, 0x69, 0x64, 0x27, 0x0a, 0x67, 0x61, 0x6d,
+        0x65, 0x3d, 0x27, 0x74, 0x6f, 0x62, 0x79, 0x2e, 0x64, 0x65, 0x6c, 0x74, 0x61, 0x72, 0x75,
+        0x6e, 0x65, 0x27, 0x0a, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x3d, 0x27, 0x31, 0x27,
+        0x0a, 0x00, 0xe0, 0x00, 0x46, 0x00, 0x41, 0x5d, 0x00, 0x1e, 0x1b, 0x49, 0xe6, 0x56, 0xc8,
+        0x52, 0x7c, 0x15, 0xd2, 0xd5, 0x35, 0x3c, 0xf4, 0x74, 0x03, 0xdd, 0xa1, 0xc9, 0x59, 0xd4,
+        0x84, 0xf8, 0xbb, 0x66, 0xad, 0x35, 0xf4, 0xa3, 0x1a, 0x3e, 0xe5, 0x0c, 0x8e, 0x66, 0x3f,
+        0xa0, 0x41, 0x70, 0x0d, 0xa8, 0x92, 0x3d, 0xd0, 0x20, 0xe8, 0x67, 0xce, 0xf7, 0xe2, 0xbe,
+        0x5e, 0x2c, 0x94, 0xee, 0x7d, 0x6e, 0xf3, 0x37, 0x7d, 0xbc, 0x25, 0xf2, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x2a, 0x44, 0x65, 0x6c, 0x74, 0x61, 0x6d, 0x6f, 0x64, 0x20, 0x73, 0x6f, 0x6c,
+        0x69, 0x64, 0x20, 0x61, 0x72, 0x63, 0x68, 0x69, 0x76, 0x65, 0x20, 0x72, 0x65, 0x67, 0x72,
+        0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x66, 0x69, 0x78, 0x74, 0x75, 0x72, 0x65, 0x2e,
+        0x0a, 0x00, 0x01, 0x04, 0x06, 0x00, 0x03, 0x09, 0x4b, 0x49, 0x2f, 0x00, 0x07, 0x0b, 0x03,
+        0x00, 0x01, 0x21, 0x21, 0x01, 0x00, 0x01, 0x21, 0x21, 0x01, 0x00, 0x01, 0x21, 0x21, 0x01,
+        0x00, 0x0c, 0x47, 0x47, 0x2b, 0x00, 0x08, 0x0a, 0x01, 0xa0, 0x94, 0x24, 0x3c, 0xa4, 0x3d,
+        0x2b, 0x81, 0xed, 0x2a, 0x9b, 0xbf, 0x00, 0x00, 0x05, 0x03, 0x19, 0x06, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x11, 0x5d, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x6d,
+        0x00, 0x65, 0x00, 0x74, 0x00, 0x61, 0x00, 0x2e, 0x00, 0x74, 0x00, 0x6f, 0x00, 0x6d, 0x00,
+        0x6c, 0x00, 0x00, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x6d, 0x00, 0x6f,
+        0x00, 0x64, 0x00, 0x64, 0x00, 0x69, 0x00, 0x6e, 0x00, 0x67, 0x00, 0x2e, 0x00, 0x78, 0x00,
+        0x6d, 0x00, 0x6c, 0x00, 0x00, 0x00, 0x6d, 0x00, 0x6f, 0x00, 0x64, 0x00, 0x2f, 0x00, 0x70,
+        0x00, 0x61, 0x00, 0x79, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x61, 0x00, 0x64, 0x00, 0x2e, 0x00,
+        0x74, 0x00, 0x78, 0x00, 0x74, 0x00, 0x00, 0x00, 0x15, 0x0e, 0x01, 0x00, 0x20, 0x80, 0xa4,
+        0x81, 0x20, 0x80, 0xa4, 0x81, 0x20, 0x80, 0xa4, 0x81, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn seven_zip_solid_and_non_solid_external_fixtures_import_exact_contents() {
+        for (bytes, solid) in [(SEVEN_SOLID_FIXTURE, true), (SEVEN_NONSOLID_FIXTURE, false)] {
+            let archive = write_fixture(bytes);
+            let parsed = SevenArchive::open(archive.path()).unwrap();
+            assert_eq!(parsed.is_solid, solid);
+            assert_eq!(parsed.blocks.len(), if solid { 1 } else { 3 });
+            assert_eq!(parsed.files.len(), 3);
+            if solid {
+                assert_eq!(parsed.stream_map.file_block_index, vec![Some(0); 3]);
+                assert!(parsed.files[0].compressed_size > 0);
+                assert!(parsed.files[1..]
+                    .iter()
+                    .all(|entry| entry.size() > 0 && entry.compressed_size == 0));
+            } else {
+                assert_eq!(
+                    parsed.stream_map.file_block_index,
+                    vec![Some(0), Some(1), Some(2)]
+                );
+                assert!(parsed.files.iter().all(|entry| entry.compressed_size > 0));
+            }
+            let packets = tempfile::tempdir().unwrap();
+            let result = import_archive(
+                archive.path(),
+                packets.path(),
+                Limits::default(),
+                || false,
+                |_| DuplicateDecision::Cancel,
+            )
+            .unwrap();
+            assert_eq!(result.package_id, "example.solid");
+            assert_eq!(result.format, ArchiveFormat::SevenZip);
+            assert_eq!(result.files, 3);
+            for (name, expected) in [
+                ("meta.toml", b"[metadata]\npackageID='example.solid'\ngame='toby.deltarune'\nversion='1'\n".as_slice()),
+                ("modding.xml", b"<mod><patch type=\"override\" patch=\"payload.txt\" to=\"solid.txt\"/></mod>\n".as_slice()),
+                ("payload.txt", b"Deltamod solid archive regression fixture.\n".as_slice()),
+            ] {
+                assert_eq!(fs::read(result.destination.join(name)).unwrap(), expected);
+            }
+        }
+    }
+
     #[test]
     fn seven_zip_import_is_end_to_end() {
         let source = tempfile::tempdir().unwrap();
@@ -1815,6 +1967,210 @@ mod tests {
         .unwrap();
         assert_eq!(result.format, ArchiveFormat::SevenZip);
         assert!(result.destination.join("modding.xml").is_file());
+    }
+
+    #[test]
+    fn seven_zip_solid_and_non_solid_fixtures_keep_resource_and_path_limits() {
+        for bytes in [SEVEN_SOLID_FIXTURE, SEVEN_NONSOLID_FIXTURE] {
+            for (limits, reason) in [
+                (
+                    Limits {
+                        max_archive_bytes: bytes.len() as u64 - 1,
+                        ..Limits::default()
+                    },
+                    "compressed archive size limit exceeded",
+                ),
+                (
+                    Limits {
+                        max_entries: 2,
+                        ..Limits::default()
+                    },
+                    "archive entry count limit exceeded",
+                ),
+                (
+                    Limits {
+                        max_entry_bytes: 64,
+                        ..Limits::default()
+                    },
+                    "individual entry size limit exceeded",
+                ),
+                (
+                    Limits {
+                        max_expanded_bytes: 100,
+                        ..Limits::default()
+                    },
+                    "expanded archive size limit exceeded",
+                ),
+            ] {
+                let archive = write_fixture(bytes);
+                let packets = tempfile::tempdir().unwrap();
+                let result = import_archive(
+                    archive.path(),
+                    packets.path(),
+                    limits,
+                    || false,
+                    |_| panic!("a rejected archive must not reach publication"),
+                );
+                assert!(
+                    matches!(result, Err(ImportError::Limit(value)) if value == reason),
+                    "{result:?}"
+                );
+                assert_eq!(fs::read_dir(packets.path()).unwrap().count(), 0);
+            }
+            let archive = write_fixture(bytes);
+            let packets = tempfile::tempdir().unwrap();
+            let result = import_archive(
+                archive.path(),
+                packets.path(),
+                Limits {
+                    max_depth: 1,
+                    ..Limits::default()
+                },
+                || false,
+                |_| panic!("an unsafe path must not reach publication"),
+            );
+            assert!(matches!(result, Err(ImportError::UnsafePath(_))));
+            assert_eq!(fs::read_dir(packets.path()).unwrap().count(), 0);
+        }
+    }
+
+    #[test]
+    fn seven_zip_shared_block_ratio_cannot_be_hidden_by_other_blocks() {
+        use sevenz_rust2::{
+            ArchiveEntry, ArchiveWriter, EncoderConfiguration, EncoderMethod, SourceReader,
+        };
+
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let mut writer = ArchiveWriter::new(archive.reopen().unwrap()).unwrap();
+        let payload = vec![b'x'; 4096];
+        writer
+            .push_archive_entries(
+                vec![
+                    ArchiveEntry::new_file("mod/first.bin"),
+                    ArchiveEntry::new_file("mod/second.bin"),
+                ],
+                vec![
+                    SourceReader::new(payload.as_slice()),
+                    SourceReader::new(payload.as_slice()),
+                ],
+            )
+            .unwrap();
+        // A separate stored block keeps the overall archive ratio small. It must
+        // not dilute the limit on the two files sharing the compressed block.
+        writer.set_content_methods(vec![EncoderConfiguration::new(EncoderMethod::COPY)]);
+        let padding = vec![b'p'; 32 * 1024];
+        for (name, data) in valid_entries() {
+            writer
+                .push_archive_entry(ArchiveEntry::new_file(name), Some(data))
+                .unwrap();
+        }
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("mod/padding.bin"),
+                Some(padding.as_slice()),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        let parsed = SevenArchive::open(archive.path()).unwrap();
+        assert!(parsed.is_solid);
+        assert_eq!(
+            &parsed.stream_map.file_block_index[..2],
+            &[Some(0), Some(0)]
+        );
+        let packed = parsed.pack_sizes()[0];
+        let shared_expanded = parsed.blocks[0].get_unpack_size();
+        assert_eq!(shared_expanded, (2 * payload.len()) as u64);
+        let limits = Limits {
+            max_ratio: (payload.len() as u64).div_ceil(packed),
+            ..Limits::default()
+        };
+        assert!((payload.len() as u64) <= packed * limits.max_ratio);
+        assert!(shared_expanded > packed * limits.max_ratio);
+        let expanded: u64 = parsed.files.iter().map(|entry| entry.size()).sum();
+        assert!(expanded < fs::metadata(archive.path()).unwrap().len() * limits.max_ratio);
+
+        let packets = tempfile::tempdir().unwrap();
+        let result = import_archive(
+            archive.path(),
+            packets.path(),
+            limits,
+            || false,
+            |_| panic!("an over-limit block must not reach publication"),
+        );
+        assert!(
+            matches!(
+                result,
+                Err(ImportError::Limit(
+                    "7z block compression ratio limit exceeded"
+                ))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(fs::read_dir(packets.path()).unwrap().count(), 0);
+
+        let result = import_archive(
+            archive.path(),
+            packets.path(),
+            Limits {
+                max_ratio: shared_expanded.div_ceil(packed),
+                ..limits
+            },
+            || false,
+            |_| DuplicateDecision::Cancel,
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(result.destination.join("first.bin")).unwrap(),
+            payload
+        );
+        assert_eq!(
+            fs::read(result.destination.join("second.bin")).unwrap(),
+            payload
+        );
+        assert_eq!(
+            fs::read(result.destination.join("padding.bin")).unwrap(),
+            padding
+        );
+    }
+
+    #[test]
+    fn seven_zip_solid_extraction_rejects_corruption_and_declared_size_overrun() {
+        let mut corrupt = SEVEN_SOLID_FIXTURE.to_vec();
+        corrupt[48] ^= 0xff;
+        let archive = write_fixture(&corrupt);
+        let packets = tempfile::tempdir().unwrap();
+        let result = import_archive(
+            archive.path(),
+            packets.path(),
+            Limits::default(),
+            || false,
+            |_| panic!("a corrupt archive must not reach publication"),
+        );
+        assert!(matches!(result, Err(ImportError::Format(_))));
+        assert_eq!(fs::read_dir(packets.path()).unwrap().count(), 0);
+
+        let archive = write_fixture(SEVEN_SOLID_FIXTURE);
+        let mut plan = inventory(
+            archive.path(),
+            ArchiveFormat::SevenZip,
+            SEVEN_SOLID_FIXTURE.len() as u64,
+            Limits::default(),
+            &|| false,
+        )
+        .unwrap();
+        plan.entries[0].size -= 1;
+        let staging = tempfile::tempdir().unwrap();
+        let result = extract_seven(
+            archive.path(),
+            &plan,
+            staging.path(),
+            Limits::default(),
+            &|| false,
+        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("entry exceeded its declared size"));
     }
 
     #[test]

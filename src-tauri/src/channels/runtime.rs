@@ -1243,7 +1243,8 @@ gamebanana_model = "Mod"
                     // UndertaleModCli scripts still have no confined staging path.
                     "csx" => {
                         assert_eq!(record["isIncompatible"], json!(true));
-                        assert!(reason.contains("cannot safely run"));
+                        assert!(reason.contains("CSX script mods are not supported"));
+                        assert!(reason.contains("xdelta, G3M, or file-replacement"));
                     }
                     // G3MTool mods stage when the packaged tool exists; otherwise
                     // the reason names the missing tool, never a blanket block.

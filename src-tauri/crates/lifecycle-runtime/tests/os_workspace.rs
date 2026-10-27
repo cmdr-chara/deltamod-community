@@ -105,6 +105,159 @@ fn success(outcome: LifecycleOutcome) {
     );
 }
 
+fn nested_install_plan(operation: &str) -> ValidatedInstallPlan {
+    let original = install_plan(
+        operation,
+        operation,
+        LifecycleOperationKind::Install,
+        "1",
+        "source",
+        &digest(b"content"),
+        7,
+    );
+    let mut files = original.files().to_vec();
+    files[0].path = ValidatedRelativePath::parse("mods/nested/a.dat").unwrap();
+    files[0].path_identity_key = "mods/nested/a.dat".into();
+    let mut intent = original.request().intent().clone();
+    intent.file_plan_fingerprint = Some(file_plan_fingerprint(&files));
+    ValidatedInstallPlan::new(
+        OperationRequest::new(operation, operation, intent).unwrap(),
+        original.metadata().clone(),
+        files,
+    )
+    .unwrap()
+}
+
+#[test]
+fn real_boundary_creates_missing_nested_parents_only_during_publication() {
+    let root = tempfile::tempdir().unwrap();
+    let game = root.path().join("game");
+    let work = root.path().join("work");
+    let store = root.path().join("store");
+    for path in [&game, &work, &store] {
+        fs::create_dir(path).unwrap();
+    }
+    let source = root.path().join("source");
+    fs::write(&source, b"content").unwrap();
+    let mut workspace = OsLifecycleWorkspace::open(game.clone(), work).unwrap();
+    workspace
+        .register_artifact_source("source", &source)
+        .unwrap();
+    let expected = workspace.transaction_root_identity().unwrap();
+    let path = ValidatedRelativePath::parse("mods/nested/a.dat").unwrap();
+    assert_eq!(
+        workspace
+            .observe_preflight_no_follow(&expected, &path)
+            .unwrap()
+            .state,
+        deltamod_product_contracts::ObservedFileState::Missing
+    );
+    assert!(
+        !game.join("mods").exists(),
+        "preflight must not create directories"
+    );
+    let mut runtime = ReleaseARuntime::new(DurableLifecycleStore::open(&store).unwrap());
+    success(runtime.install(
+        nested_install_plan("install-nested"),
+        identity("lease-nested", "generation-nested"),
+        &mut workspace,
+    ));
+    assert_eq!(fs::read(game.join(path.as_str())).unwrap(), b"content");
+    success(runtime.uninstall(
+        uninstall_plan(),
+        identity("lease-remove", "generation-remove"),
+        &mut workspace,
+    ));
+    fs::remove_dir(game.join("mods/nested")).unwrap();
+    fs::remove_dir(game.join("mods")).unwrap();
+    success(runtime.install(
+        nested_install_plan("reinstall-nested"),
+        identity("lease-reinstall", "generation-reinstall"),
+        &mut workspace,
+    ));
+    assert_eq!(fs::read(game.join(path.as_str())).unwrap(), b"content");
+}
+
+#[cfg(unix)]
+#[test]
+fn missing_parent_publication_refuses_late_alias_collision_and_root_replacement() {
+    use deltamod_lifecycle_runtime::{FaultInjector, FaultPoint, InjectedFault};
+    use deltamod_product_contracts::ProductErrorCode;
+
+    struct InterfereOnce(Option<Box<dyn FnOnce() + Send>>);
+    impl FaultInjector for InterfereOnce {
+        fn check(&mut self, point: &FaultPoint) -> Result<(), InjectedFault> {
+            if matches!(point, FaultPoint::BeforeFilesystemEffect { .. }) {
+                if let Some(interfere) = self.0.take() {
+                    interfere();
+                }
+            }
+            Ok(())
+        }
+    }
+
+    for interference in ["ancestor-link", "file-collision", "root-replacement"] {
+        let root = tempfile::tempdir().unwrap();
+        let game = root.path().join("game");
+        let work = root.path().join("work");
+        let store = root.path().join("store");
+        let outside = root.path().join("outside");
+        for path in [&game, &work, &store, &outside] {
+            fs::create_dir(path).unwrap();
+        }
+        fs::write(outside.join("sentinel"), b"untouched").unwrap();
+        let source = root.path().join("source");
+        fs::write(&source, b"content").unwrap();
+        let mut workspace = OsLifecycleWorkspace::open(game.clone(), work).unwrap();
+        workspace
+            .register_artifact_source("source", &source)
+            .unwrap();
+        let mut runtime = ReleaseARuntime::new(DurableLifecycleStore::open(&store).unwrap());
+        let changed_game = game.clone();
+        let changed_outside = outside.clone();
+        runtime
+            .store_mut()
+            .set_fault_injector(InterfereOnce(Some(Box::new(move || match interference {
+                "ancestor-link" => {
+                    std::os::unix::fs::symlink(changed_outside, changed_game.join("mods")).unwrap();
+                }
+                "file-collision" => {
+                    fs::create_dir_all(changed_game.join("mods/nested")).unwrap();
+                    fs::write(changed_game.join("mods/nested/a.dat"), b"external").unwrap();
+                }
+                "root-replacement" => {
+                    fs::rename(&changed_game, changed_game.with_file_name("old-game")).unwrap();
+                    fs::create_dir(changed_game).unwrap();
+                }
+                _ => unreachable!(),
+            }))));
+        let outcome = runtime.install(
+            nested_install_plan("nested-interference"),
+            identity("lease-interference", "generation-interference"),
+            &mut workspace,
+        );
+        let error = match outcome {
+            LifecycleOutcome::Rejected { error, .. }
+            | LifecycleOutcome::RecoveryRequired { error, .. } => error,
+            other => panic!("unexpected outcome after {interference}: {other:?}"),
+        };
+        assert!(matches!(
+            error.code,
+            ProductErrorCode::PathEscapedRoot | ProductErrorCode::ExternalModification
+        ));
+        assert_eq!(fs::read(outside.join("sentinel")).unwrap(), b"untouched");
+        assert!(!outside.join("nested").exists());
+        if interference == "file-collision" {
+            assert_eq!(
+                fs::read(game.join("mods/nested/a.dat")).unwrap(),
+                b"external"
+            );
+        } else {
+            assert!(!game.join("mods/nested/a.dat").exists());
+        }
+    }
+}
+
 #[test]
 fn real_boundary_installs_updates_and_uninstalls_through_journaled_runtime() {
     let root = tempfile::tempdir().unwrap();
