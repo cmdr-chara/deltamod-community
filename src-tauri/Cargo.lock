@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "deltamod-tauri-shell"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "base64 0.23.1",
  "deltamod-archive-import-runtime",

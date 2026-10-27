@@ -1,3 +1,15 @@
+# Deltamod Community 2.1.1
+
+Released October 27, 2026.
+
+## Changes
+
+- Fixed mod patch restoration and consecutive crash recovery.
+- Fixed profile restoration, solid 7z imports, and duplicate-import cancellation.
+- Corrected unsupported CSX script messaging.
+- Updated rustls to a patched release and added TLS dependency security checks.
+- Replaced the retired macOS ARM runner for package builds.
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
