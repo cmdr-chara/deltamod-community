@@ -12,37 +12,41 @@ permissions:
   contents: read
 
 jobs:
-  source-workspace:
+  linux-test-tools:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Archive tracked Community source only
-        run: |
-          git archive --format=tar.gz --output="$RUNNER_TEMP/community-source.tar.gz" HEAD
-          git rev-parse HEAD > "$RUNNER_TEMP/community-source.sha"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: community-feature-source
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: error
-          path: |
-            ${{ runner.temp }}/community-source.tar.gz
-            ${{ runner.temp }}/community-source.sha
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
-      - name: Install locked dependencies without lifecycle scripts
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+      - name: Build locked native test workers
+        run: cargo build --workspace --locked --manifest-path native/Cargo.toml
+      - name: Install locked frontend test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Package local test dependencies
-        run: tar -czf "$RUNNER_TEMP/community-node-modules.tar.gz" node_modules
+      - name: Install locked Playwright browser
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .feature-browsers
+        run: npx --no-install playwright install chromium
+      - name: Package offline verification tools
+        run: |
+          tar -czf "$RUNNER_TEMP/community-linux-test-tools.tar.gz" \
+            native/target/debug/deltamod-copy-worker \
+            native/target/debug/deltamod-hash-worker \
+            native/target/debug/deltamod-security-worker \
+            native/target/debug/deltamod-patch-plan-worker \
+            native/target/debug/deltamod-patch-transaction-worker \
+            .feature-browsers
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: community-feature-test-dependencies
+          name: community-feature-linux-test-tools
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
-          path: ${{ runner.temp }}/community-node-modules.tar.gz
+          include-hidden-files: true
+          path: ${{ runner.temp }}/community-linux-test-tools.tar.gz
