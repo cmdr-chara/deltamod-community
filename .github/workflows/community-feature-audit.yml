@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 Deltamod Community contributors
+# SPDX-License-Identifier: EUPL-1.2
+
+name: Community feature audit workspace
+
+on:
+  push:
+    branches: [feat/community-social-l10n-17]
+    paths: [.github/workflows/community-feature-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Archive tracked Community source only
+        run: |
+          git archive --format=tar.gz --output="$RUNNER_TEMP/community-source.tar.gz" HEAD
+          git rev-parse HEAD > "$RUNNER_TEMP/community-source.sha"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: community-feature-source
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/community-source.tar.gz
+            ${{ runner.temp }}/community-source.sha
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Package local test dependencies
+        run: tar -czf "$RUNNER_TEMP/community-node-modules.tar.gz" node_modules
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: community-feature-test-dependencies
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+          path: ${{ runner.temp }}/community-node-modules.tar.gz
