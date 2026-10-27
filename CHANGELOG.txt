@@ -1,3 +1,12 @@
+# Deltamod Community 2.1.2
+
+Released 2026-10-27.
+
+## Changes
+
+- fix(security): update rustls and rustls-webpki to patched releases (`5685f3c`).
+- fix(ci): guard patched TLS dependencies and replace retiring macOS 14 runner (`88a204f`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
