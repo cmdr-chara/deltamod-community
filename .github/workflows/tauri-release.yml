@@ -231,7 +231,7 @@ jobs:
             bundles: app,dmg
             smoke_executable: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Deltamod Community.app/Contents/MacOS/Deltamod Community
           # macOS 14 retires November 2, 2026; use the tested arm64 CI image.
-          - os: macos-26
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact: macos-arm64-dmg
             bundles: app,dmg
