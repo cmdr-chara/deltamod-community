@@ -1,3 +1,4 @@
+const shellText = (source, ...args) => window.Localization?.text(source, ...args) ?? source.replace(/\{(\d+)\}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
 /**
  * ==========================================
  * Deltamod Core Script
@@ -237,6 +238,9 @@ function themeVideoRevealDelayMs(themeConfig = theme) {
 const ROARING_KNIGHT_TRANSITION = Object.freeze({
     id: 'roaring-knight-monochrome-awakening',
     root: 'the-knight-transition',
+    cutTimes: Object.freeze([950, 1320, 1690]),
+    revealAt: 2200,
+    cleanupAt: 2800,
     slashFrames: Object.freeze(Array.from(
         { length: 6 },
         (_, index) => `spr_roaringknight_front_slash_${index}.png`
@@ -373,17 +377,17 @@ async function playRoaringKnightSoundSequence() {
         .catch(() => true);
     if (sfxEnabled === false || document.hidden || generation !== themeTransitionGeneration) return;
 
-    // DELTARUNE layers movement and multiple differently pitched cuts for the
-    // Knight. Keep the same structure while using locally bundled assets.
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 1200, 0.48, 0.86);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 2200, 0.26, 1.18);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 2900, 0.34, 0.72);
+    // Three distinct cuts retain the Knight's rhythm without a long overlay.
+    const [firstCut, secondCut, thirdCut] = ROARING_KNIGHT_TRANSITION.cutTimes;
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 160, 0.30, 0.86);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 430, 0.22, 1.18);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 690, 0.18, 0.92);
 
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 3300, 0.58, 0.72);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 3720, 0.46, 0.94);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 4140, 0.32, 1.22);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.impact, 4200, 0.34, 1.12, 950);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.damage, 4250, 0.42, 0.78);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, firstCut, 0.52, 0.90);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, secondCut, 0.42, 1.05);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, thirdCut, 0.36, 1.20);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.impact, 2100, 0.30, 1.12, 650);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.damage, 2120, 0.36, 0.90);
 }
 
 function activeThemeVisualConfig() {
@@ -539,66 +543,25 @@ function playRoaringKnightTransition() {
     const overlay = document.createElement('div');
     overlay.id = 'theme-transition-overlay';
     overlay.className = 'theme-transition-overlay';
-    overlay.setAttribute('aria-label', 'Roaring Knight awakening');
+    window.Localization.bindTextAttribute(overlay, 'aria-label', 'Roaring Knight awakening');
 
     const blackout = document.createElement('span');
     blackout.className = 'theme-transition-blackout';
-
-    const sigil = document.createElement('span');
-    sigil.className = 'theme-transition-sigil';
+    blackout.setAttribute('aria-hidden', 'true');
 
     const knightStage = document.createElement('div');
     knightStage.className = 'theme-transition-knight-stage';
-    for (let echoIndex = 3; echoIndex >= 0; echoIndex -= 1) {
-        const knight = document.createElement('img');
-        knight.className = `theme-transition-knight ${echoIndex === 0 ? 'is-main' : 'is-echo'}`;
-        knight.alt = '';
-        knight.style.setProperty('--echo-index', String(echoIndex));
-        knight.style.setProperty('--echo-delay', `${echoIndex * 55}ms`);
-        knight.style.setProperty('--echo-shift', `${echoIndex * -12}px`);
-        knight.style.setProperty('--echo-scale', String(0.88 + echoIndex * 0.035));
-        knight.style.setProperty('--echo-opacity', String(
-            echoIndex === 0 ? 1 : Math.max(0.16, 0.56 - echoIndex * 0.12)
-        ));
-        setRoaringKnightSlashFrame(knight, 0);
-        knightStage.appendChild(knight);
-    }
+    knightStage.setAttribute('aria-hidden', 'true');
+    const knight = document.createElement('img');
+    knight.className = 'theme-transition-knight';
+    knight.alt = '';
+    setRoaringKnightSlashFrame(knight, 0);
+    knightStage.appendChild(knight);
 
-    const soul = document.createElement('span');
-    soul.className = 'theme-transition-soul';
-    soul.textContent = '♥';
-
-    const rift = document.createElement('span');
-    rift.className = 'theme-transition-rift';
-
-    const particles = document.createElement('div');
-    particles.className = 'theme-transition-particles';
-    for (let particleIndex = 0; particleIndex < 32; particleIndex += 1) {
-        const particle = document.createElement('span');
-        particle.style.setProperty('--particle-angle', `${particleIndex * 137.5}deg`);
-        particle.style.setProperty('--particle-distance', `${20 + (particleIndex % 4) * 5}vmin`);
-        particle.style.setProperty('--particle-delay', `${particleIndex * 18}ms`);
-        particles.appendChild(particle);
-    }
-
-    const fountain = document.createElement('div');
-    fountain.className = 'theme-transition-fountain';
-    for (let i = 0; i < 16; i += 1) {
-        const ray = document.createElement('span');
-        ray.style.setProperty('--ray', String(i));
-        fountain.appendChild(ray);
-    }
-    const flight = document.createElement('img');
-    flight.className = 'theme-transition-flight';
-    flight.alt = '';
-    flight.src = themeTransitionAssetUrl('spr_roaringknight_fly_transition_0.png');
-    const title = document.createElement('div');
-    title.className = 'theme-transition-title';
-    title.textContent = 'THE ROARING KNIGHT';
     const skip = document.createElement('button');
     skip.id = 'theme-transition-skip';
     skip.className = 'theme-transition-skip';
-    skip.textContent = 'Skip · Esc';
+    window.Localization.bindText(skip, 'Skip · Esc');
     const finish = () => {
         clearThemeTransition();
         completeRoaringKnightAwakening();
@@ -610,28 +573,24 @@ function playRoaringKnightTransition() {
         finish();
     };
     document.addEventListener('keydown', themeTransitionEscapeHandler);
-    overlay.append(blackout, fountain, sigil, particles, flight, knightStage, soul, rift, title, skip);
-    for (const decoration of overlay.children) {
-        if (decoration !== skip) decoration.setAttribute('aria-hidden', 'true');
-    }
+    overlay.append(blackout, knightStage, skip);
     document.body.appendChild(overlay);
     document.documentElement.classList.add('roaring-knight-blackout');
     requestAnimationFrame(() => overlay.classList.add('is-active'));
     void playRoaringKnightSoundSequence();
 
-    [3300, 3720, 4140].forEach((delay, cut) => {
+    ROARING_KNIGHT_TRANSITION.cutTimes.forEach((delay, cut) => {
         themeTransitionPhaseTimers.push(setTimeout(() => {
             if (!overlay.isConnected) return;
-            const slash = rift.cloneNode();
-            slash.classList.add('is-cut');
+            const slash = document.createElement('span');
+            slash.className = 'theme-transition-rift is-cut';
+            slash.setAttribute('aria-hidden', 'true');
             slash.style.setProperty('--cut-angle', `${[-28, 32, -8][cut]}deg`);
             overlay.appendChild(slash);
             let frame = 0;
             const advance = () => {
                 if (!overlay.isConnected) return;
-                knightStage.querySelectorAll('.theme-transition-knight').forEach(knight => {
-                    setRoaringKnightSlashFrame(knight, frame);
-                });
+                setRoaringKnightSlashFrame(knight, frame);
                 frame += 1;
                 if (frame < ROARING_KNIGHT_TRANSITION.slashFrames.length) {
                     themeTransitionPhaseTimers.push(setTimeout(advance, 60));
@@ -640,19 +599,15 @@ function playRoaringKnightTransition() {
             advance();
         }, delay));
     });
-    themeTransitionImpactTimer = setTimeout(() => {
-        if (!overlay.isConnected) return;
-        overlay.classList.add('is-impacting');
-    }, 4200);
 
     themeTransitionReleaseTimer = setTimeout(() => {
         if (!overlay.isConnected) return;
         overlay.classList.add('is-releasing');
         document.documentElement.classList.remove('roaring-knight-blackout');
         completeRoaringKnightAwakening();
-    }, 5400);
+    }, ROARING_KNIGHT_TRANSITION.revealAt);
 
-    themeTransitionCleanupTimer = setTimeout(clearThemeTransition, 6800);
+    themeTransitionCleanupTimer = setTimeout(clearThemeTransition, ROARING_KNIGHT_TRANSITION.cleanupAt);
 }
 
 function synchronizeThemeTransition() {
@@ -1058,7 +1013,7 @@ async function makeGlyphs(jsonArr) {
         glyphIconElement.innerText = glyph.icon;
 
         var glyphDescElement = document.createElement('span');
-        glyphDescElement.innerText = glyph.description;
+        window.Localization.bindText(glyphDescElement, glyph.description);
 
         glyphContainer.appendChild(glyphIconElement);
         glyphContainer.appendChild(glyphDescElement);
@@ -1084,11 +1039,11 @@ async function reapplyHAStyles() {
  */
 async function promptLeaveCMode() {
     htmlAlert(
-        "Exit controller mode", 
-        "Are you sure you want to exit controller mode? If you exit controller mode, Deltamod will close.", 
+        shellText("Exit controller mode"),
+        shellText("Are you sure you want to exit controller mode? If you exit controller mode, Deltamod will close."),
         [
-            { text: "Yes", resolveWith: true },
-            { text: "No", resolveWith: false }
+            { text: shellText("Yes"), resolveWith: true },
+            { text: shellText("No"), resolveWith: false }
         ], 
         'stadia_controller'
     ).then(async (result) => {
@@ -1164,7 +1119,16 @@ async function htmlAlert(title, message, buttons, specialIcon = 'info') {
 
 /** Preserve the existing themed/aligned alert while fixing lifecycle and keyboard use. */
 async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
-    const choices = Array.isArray(buttons) && buttons.length ? buttons : [{ text: 'OK', resolveWith: 'ok' }];
+    const choices = Array.isArray(buttons) && buttons.length ? buttons : [{ text: () => shellText("OK"), resolveWith: 'ok' }];
+    const resolveText = value => String((typeof value === 'function' ? value() : value) ?? '');
+    const bindAlertText = (element, value) => {
+        // Literal strings may be provider diagnostics or user content. Only an
+        // explicit app-owned renderer opts into live localization.
+        element.dataset.userContent = '';
+        if (typeof value === 'function' && window.Localization?.bindComputed) {
+            window.Localization.bindComputed(element, () => resolveText(value));
+        } else element.textContent = resolveText(value);
+    };
     const has = (choice, key) => Object.prototype.hasOwnProperty.call(choice, key);
     const settle = async choice => {
         if (has(choice, 'rejectWith')) throw choice.rejectWith;
@@ -1176,7 +1140,10 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
     try {
         if (localStorage.getItem('alertAlignment') === 'Separate'
             && window.deltamodBackend.isCommandAvailable('htmlAlert_outwin')) {
-            const index = await window.deltamodBackend.invoke('htmlAlert_outwin', [title, message, choices]);
+            // The native contract needs labels and returns a choice index.
+            // Keep callbacks and settlement values in this renderer only.
+            const nativeChoices = choices.map(choice => ({ text: resolveText(choice.text) }));
+            const index = await window.deltamodBackend.invoke('htmlAlert_outwin', [resolveText(title), resolveText(message), nativeChoices]);
             const selected = choices[index];
             if (!selected) throw new Error('Alert closed without a selection');
             return await settle(selected);
@@ -1189,10 +1156,10 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
         const content = document.createElement('div');
         const heading = document.createElement('h1');
         heading.id = 'community-alert-title';
-        heading.textContent = title;
+        bindAlertText(heading, title);
         const copy = document.createElement('p');
         copy.id = 'community-alert-description';
-        copy.textContent = String(message);
+        bindAlertText(copy, message);
         copy.style.whiteSpace = 'pre-line';
         const controls = document.createElement('div');
         controls.className = 'alertButtons';
@@ -1233,7 +1200,7 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
                 choices.forEach(choice => {
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.textContent = choice.text;
+                    bindAlertText(button, choice.text);
                     button.addEventListener('click', () => close(choice));
                     controls.append(button);
                 });
@@ -1270,6 +1237,7 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
             alertMain.hidden = true;
             alertMain.style.display = 'none';
             alertMsgR.style.animation = 'none';
+            window.Localization?.release?.(content);
             alertMsgR.replaceChildren();
             inertState.forEach(([node, inert]) => { node.inert = inert; });
             if (previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus({ preventScroll: true });
@@ -1296,11 +1264,11 @@ window.preloadAPI.onUpdateAvailable((info) => {
     window.ustack.updateInfo = info;
 
     htmlAlert(
-        'Update available', 
-        `A new version of Deltamod Community (${info.version}) is available for download. Do you wish to update?`,
+        shellText("Update available"),
+        shellText("A new version of Deltamod Community ({0}) is available. Download and install it?", info.version),
         [
-            { text: 'Yes', resolveWith: "a" },
-            { text: 'No', rejectWith: "a" }
+            { text: shellText("Yes"), resolveWith: "a" },
+            { text: shellText("No"), rejectWith: "a" }
         ], 
         'update'
     ).then(async () => {
@@ -1308,7 +1276,7 @@ window.preloadAPI.onUpdateAvailable((info) => {
             await window.deltamodBackend.invoke('start-update', []);
         } catch (error) {
             // Installation failure is not a user rejection of the initial offer.
-            window.deltamodUpdateNotice?.failure('The update did not finish. Check the update notice, then try again.');
+            window.deltamodUpdateNotice?.failure(shellText("The update did not finish. Check the update notice, then try again."));
             console.error('Update failed:', error);
         }
     }, async () => {
@@ -1335,7 +1303,7 @@ function sanitizeHTML(str) {
 }
 
 function formatBytes(bytes) {
-    if (!Number.isFinite(bytes) || bytes < 0) return 'an unknown amount of space';
+    if (!Number.isFinite(bytes) || bytes < 0) return shellText("Unknown space requirement");
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let value = bytes;
     let unit = 0;
@@ -1343,7 +1311,7 @@ function formatBytes(bytes) {
         value /= 1024;
         unit += 1;
     }
-    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    return `${window.Localization?.number(value, { maximumFractionDigits: unit === 0 ? 0 : 1 }) ?? value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 async function offerOfficialProfileImport() {
@@ -1354,11 +1322,11 @@ async function offerOfficialProfileImport() {
         }
 
         const choice = await htmlAlert(
-            'Import your Deltamod data',
-            `Deltamod ${summary.version || ''} was found with ${summary.installations} installation(s), ${summary.mods} mod(s), and ${summary.themes} custom theme(s). A safe Community copy needs ${formatBytes(summary.totalBytes)}. Official Deltamod will not be changed.`,
+            shellText("Import your Deltamod data"),
+            shellText("Deltamod {0} was found. Installations: {1}; mods: {2}; custom themes: {3}. A separate Community copy needs {4}. Official Deltamod data will remain unchanged.", summary.version || '', window.Localization.number(summary.installations), window.Localization.number(summary.mods), window.Localization.number(summary.themes), formatBytes(summary.totalBytes)),
             [
-                { text: 'Review and import', resolveWith: 'import' },
-                { text: 'Later', resolveWith: 'later' }
+                { text: shellText("Review and import"), resolveWith: 'import' },
+                { text: shellText("Later"), resolveWith: 'later' }
             ],
             'database'
         );
@@ -1480,8 +1448,8 @@ async function themeRefresh(refreshAudio = true) {
     if (runtimeLayout) {
         theme.background = theme.background || theme.icon;
         theme.mainSong = theme.mainSong || theme.music;
-        theme.description = theme.description || 'Custom theme';
-        theme.musicTrack = theme.musicTrack || (theme.mainSong ? 'Custom audio' : 'No custom audio');
+        theme.description = theme.description || shellText("Custom theme");
+        theme.musicTrack = theme.musicTrack || (theme.mainSong ? shellText("Custom audio") : shellText("No custom audio"));
         theme.color = theme.color || 'rgb(205, 68, 81)';
         theme.soulColor = theme.soulColor || '#FF0000';
     }
@@ -1709,7 +1677,8 @@ async function renderPage(name) {
     ) || title?.[1] || 'Deltamod Community';
     const pageTitleElement = document.getElementById('pageTitle');
     if (pageTitleElement) {
-        pageTitleElement.textContent = pageTitle;
+        pageTitleElement.removeAttribute('data-i18n');
+        window.Localization.bindText(pageTitleElement, title?.[1] || 'Deltamod Community');
     }
 
     // Extract Exclude Audio Tag
@@ -1794,7 +1763,7 @@ async function renderPage(name) {
 
     pageN = name;
 
-    applyThemeStyles(theme);
+    applyThemeStyles(activeThemeVisualConfig());
 
     // Execute Page JS
     if (runScripts) {
@@ -1873,7 +1842,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 if (!window.deltamodBackend) {
-    window.alert('This application cannot run in this environment.');
+    window.alert(shellText("This application cannot run in this environment."));
     window.close();
     window.location.href = 'about:blank';
 }
@@ -1908,8 +1877,11 @@ async function renderuser() {
         if (!fallback.isConnected) gbaccount.prepend(fallback);
     };
     const username = document.createElement('span');
-    username.textContent = String(gbuser?._sName || 'GameBanana user');
+    if (gbuser?._sName) username.textContent = String(gbuser._sName);
+    else window.Localization?.bindComputed(username, () => shellText("GameBanana user"));
     username.className = 'gamebanana-account-name';
+    username.dir = 'auto';
+    username.dataset.userContent = '';
     if (avatarUrl) {
         gbaccount.append(avatar, username);
     } else {
@@ -1945,10 +1917,18 @@ async function setupLanguageWheel() {
     const backdrop = document.getElementById('language-wheel-backdrop');
     const sectors = document.getElementById('language-wheel-sectors');
     const options = document.getElementById('language-wheel-options');
-    const currentFlag = document.getElementById('language-wheel-current-flag');
+    const currentName = document.getElementById('language-wheel-current-name');
+    const previousPage = document.getElementById('language-wheel-previous');
+    const nextPage = document.getElementById('language-wheel-next');
+    const pageStatus = document.getElementById('language-wheel-page');
     const languages = await window.Localization.getLanguages();
-    const optionButtons = [];
-    const sectorPaths = [];
+    const pageSize = 9;
+    const pageCount = Math.ceil(languages.length / pageSize);
+    let activePage = 0;
+    let visibleLanguages = [];
+    let optionButtons = [];
+    let sectorPaths = [];
+    let allowPointerPreview = false;
     const wheelFlagCodes = Object.freeze({
         en: 'en',
         it: 'it',
@@ -1972,12 +1952,23 @@ async function setupLanguageWheel() {
     );
 
     const wheelFlag = language => (
-        `assets/language-flags/${wheelFlagCodes[language.code]}.svg`
+        wheelFlagCodes[language.code] ? `assets/language-flags/${wheelFlagCodes[language.code]}.svg` : language.flag
     );
 
+    // External SVG roots retain their own aspect-fit behavior inside an <image>.
+    // Match that viewport to the asset, then crop the pattern viewBox to each
+    // wedge's bounding box. A normalized 1x1 image can leave transparent caps.
+    const flagSizes = new Map(await Promise.all(languages.map(language => new Promise(resolve => {
+        const image = new Image();
+        image.onload = () => resolve([language.code, { width: image.naturalWidth || 1, height: image.naturalHeight || 1 }]);
+        image.onerror = () => resolve([language.code, { width: 1, height: 1 }]);
+        image.src = wheelFlag(language);
+    }))));
+
     const previewLanguage = language => {
-        const previewIndex = Math.max(0, languages.findIndex(item => item.code === language.code));
-        const targetRotation = previewIndex * (360 / languages.length);
+        const previewIndex = visibleLanguages.findIndex(item => item.code === language.code);
+        if (previewIndex < 0) return;
+        const targetRotation = previewIndex * (360 / visibleLanguages.length);
         if (previewRotation === null) {
             previewRotation = targetRotation;
         } else {
@@ -1987,8 +1978,7 @@ async function setupLanguageWheel() {
             );
             previewRotation += shortestDelta;
         }
-        currentFlag.src = wheelFlag(language);
-        currentFlag.alt = '';
+        if (currentName) { currentName.textContent = language.name; currentName.lang = language.code; currentName.dir = 'auto'; }
         wheel.style.setProperty('--preview-angle', `${previewRotation}deg`);
         optionButtons.forEach(button => {
             button.classList.toggle('is-preview', button.dataset.language === language.code);
@@ -2000,6 +1990,12 @@ async function setupLanguageWheel() {
 
     const syncLanguageWheel = () => {
         const language = selectedLanguage();
+        const selectedPage = Math.floor(languages.indexOf(language) / pageSize);
+        const restoreFocus = wheel.contains(document.activeElement) && !wheel.hidden;
+        if (!visibleLanguages.length || activePage !== selectedPage) {
+            renderPage(selectedPage);
+            if (restoreFocus) optionButtons.find(button => button.dataset.language === language.code)?.focus();
+        }
         toggleFlag.src = wheelFlag(language);
         previewLanguage(language);
 
@@ -2007,6 +2003,7 @@ async function setupLanguageWheel() {
         toggle.title = changeLabel;
         toggle.setAttribute('aria-label', `${changeLabel}: ${language.name}`);
         wheel.setAttribute('aria-label', changeLabel);
+        syncPagination();
         for (const button of optionButtons) {
             button.setAttribute(
                 'aria-pressed',
@@ -2057,9 +2054,11 @@ async function setupLanguageWheel() {
     };
 
     const focusRelativeOption = (button, direction) => {
-        const currentIndex = optionButtons.indexOf(button);
-        const nextIndex = (currentIndex + direction + optionButtons.length) % optionButtons.length;
-        optionButtons[nextIndex].focus();
+        const currentIndex = languages.findIndex(language => language.code === button.dataset.language);
+        const nextIndex = (currentIndex + direction + languages.length) % languages.length;
+        const targetPage = Math.floor(nextIndex / pageSize);
+        if (targetPage !== activePage) renderPage(targetPage);
+        optionButtons[nextIndex % pageSize].focus();
     };
 
     const activateLanguage = async language => {
@@ -2106,74 +2105,135 @@ async function setupLanguageWheel() {
         ].join(' ');
     };
 
-    languages.forEach((language, index) => {
-        const button = document.createElement('button');
-        const angle = index * (360 / languages.length);
-        const buttonRadius = 112;
-        const buttonAngle = (angle - 90) * (Math.PI / 180);
-        const sector = document.createElementNS(svgNamespace, 'path');
-        const pattern = document.createElementNS(svgNamespace, 'pattern');
-        const patternImage = document.createElementNS(svgNamespace, 'image');
-        const patternId = `language-sector-${language.code.replace(/[^a-z0-9]/gi, '-')}`;
+    const syncPagination = () => {
+        const number = value => window.Localization.number?.(value) ?? String(value);
+        const status = window.Localization.t('language_page_status', 'Page {0} of {1}', number(activePage + 1), number(pageCount));
+        pageStatus.textContent = `${number(activePage + 1)} / ${number(pageCount)}`;
+        pageStatus.setAttribute('aria-label', status);
+        previousPage.disabled = activePage === 0;
+        nextPage.disabled = activePage === pageCount - 1;
+        previousPage.setAttribute('aria-label', window.Localization.t('language_previous_page', 'Previous languages'));
+        nextPage.setAttribute('aria-label', window.Localization.t('language_next_page', 'More languages'));
+        previousPage.title = previousPage.getAttribute('aria-label');
+        nextPage.title = nextPage.getAttribute('aria-label');
+        wheel.dataset.page = String(activePage + 1);
+    };
 
-        button.type = 'button';
-        button.className = 'language-wheel-option noScaleBTN';
-        button.dataset.language = language.code;
-        button.title = language.name;
-        button.setAttribute('aria-label', language.name);
-        button.style.setProperty('--wheel-index', String(index));
-        button.style.setProperty('--wheel-button-x', `${125 + (Math.cos(buttonAngle) * buttonRadius)}px`);
-        button.style.setProperty('--wheel-button-y', `${123 + (Math.sin(buttonAngle) * buttonRadius)}px`);
+    const renderPage = page => {
+        activePage = Math.max(0, Math.min(pageCount - 1, page));
+        visibleLanguages = languages.slice(activePage * pageSize, (activePage + 1) * pageSize);
+        // A stationary pointer must not preview a different language when sectors are replaced.
+        allowPointerPreview = false;
+        optionButtons = [];
+        sectorPaths = [];
+        sectorDefinitions.replaceChildren();
+        sectors.replaceChildren(sectorDefinitions);
+        options.replaceChildren();
+        previewRotation = null;
+        visibleLanguages.forEach((language, index) => {
+            const button = document.createElement('button');
+            const angle = index * (360 / visibleLanguages.length);
+            const buttonRadius = 112;
+            const buttonAngle = (angle - 90) * (Math.PI / 180);
+            const sector = document.createElementNS(svgNamespace, 'path');
+            const pattern = document.createElementNS(svgNamespace, 'pattern');
+            const patternImage = document.createElementNS(svgNamespace, 'image');
+            const patternId = `language-sector-${language.code.replace(/[^a-z0-9]/gi, '-')}`;
 
-        sector.classList.add('language-wheel-sector');
-        sector.dataset.language = language.code;
-        sector.style.fill = `url(#${patternId})`;
-        sector.setAttribute('d', sectorPath(
-            -112.5 + angle + 1.4,
-            -67.5 + angle - 1.4
-        ));
+            button.type = 'button';
+            button.className = 'language-wheel-option noScaleBTN';
+            button.dataset.language = language.code;
+            button.title = language.name;
+            button.lang = language.code;
+            button.dir = 'auto';
+            button.setAttribute('aria-label', language.name);
+            button.style.setProperty('--wheel-index', String(index));
+            button.style.setProperty('--wheel-button-x', `${139 + (Math.cos(buttonAngle) * buttonRadius)}px`);
+            button.style.setProperty('--wheel-button-y', `${145 + (Math.sin(buttonAngle) * buttonRadius)}px`);
 
-        pattern.id = patternId;
-        pattern.setAttribute('width', '1');
-        pattern.setAttribute('height', '1');
-        pattern.setAttribute('patternUnits', 'objectBoundingBox');
-        pattern.setAttribute('patternContentUnits', 'objectBoundingBox');
-        patternImage.setAttribute('href', wheelFlag(language));
-        patternImage.setAttribute('width', '1');
-        patternImage.setAttribute('height', '1');
-        patternImage.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-        pattern.appendChild(patternImage);
-        sectorDefinitions.appendChild(pattern);
-        sectors.appendChild(sector);
-        sectorPaths.push(sector);
+            sector.classList.add('language-wheel-sector');
+            sector.dataset.language = language.code;
+            sector.style.fill = `url(#${patternId})`;
+            sector.setAttribute('d', sectorPath(
+                -90 - 180 / visibleLanguages.length + angle + 1.4,
+                -90 + 180 / visibleLanguages.length + angle - 1.4
+            ));
 
-        sector.addEventListener('pointerover', () => {
-            if (!isChangingLanguage) previewLanguage(language);
+            pattern.id = patternId;
+            pattern.setAttribute('width', '1');
+            pattern.setAttribute('height', '1');
+            pattern.setAttribute('patternUnits', 'objectBoundingBox');
+            const flagSize = flagSizes.get(language.code);
+            pattern.setAttribute('viewBox', `0 0 ${flagSize.width} ${flagSize.height}`);
+            pattern.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+            patternImage.setAttribute('href', wheelFlag(language));
+            patternImage.setAttribute('width', String(flagSize.width));
+            patternImage.setAttribute('height', String(flagSize.height));
+            pattern.appendChild(patternImage);
+            sectorDefinitions.appendChild(pattern);
+            sectors.appendChild(sector);
+            sectorPaths.push(sector);
+
+            sector.addEventListener('pointerover', () => {
+                if (!isChangingLanguage && allowPointerPreview) previewLanguage(language);
+            });
+            sector.addEventListener('click', () => activateLanguage(language));
+            button.addEventListener('pointerover', () => {
+                if (!isChangingLanguage && allowPointerPreview) previewLanguage(language);
+            });
+            button.addEventListener('focus', () => previewLanguage(language));
+            button.addEventListener('click', () => activateLanguage(language));
+            button.addEventListener('keydown', event => {
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    focusRelativeOption(button, event.key === 'ArrowRight' && document.documentElement.dir === 'rtl' ? -1 : 1);
+                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    focusRelativeOption(button, event.key === 'ArrowLeft' && document.documentElement.dir === 'rtl' ? 1 : -1);
+                } else if (event.key === 'Home') {
+                    event.preventDefault();
+                    renderPage(0);
+                    optionButtons[0].focus();
+                } else if (event.key === 'End') {
+                    event.preventDefault();
+                    renderPage(pageCount - 1);
+                    optionButtons[optionButtons.length - 1].focus();
+                } else if (event.key === 'PageUp' || event.key === 'PageDown') {
+                    event.preventDefault();
+                    changePage(event.key === 'PageDown' ? 1 : -1, index);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeWheel();
+                }
+            });
+
+            optionButtons.push(button);
+            options.appendChild(button);
         });
-        sector.addEventListener('click', () => activateLanguage(language));
-        button.addEventListener('focus', () => previewLanguage(language));
-        button.addEventListener('click', () => activateLanguage(language));
-        button.addEventListener('keydown', event => {
-            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                event.preventDefault();
-                focusRelativeOption(button, 1);
-            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                focusRelativeOption(button, -1);
-            } else if (event.key === 'Home') {
-                event.preventDefault();
-                optionButtons[0].focus();
-            } else if (event.key === 'End') {
-                event.preventDefault();
-                optionButtons[optionButtons.length - 1].focus();
-            } else if (event.key === 'Escape') {
-                event.preventDefault();
-                closeWheel();
-            }
-        });
+        const selected = selectedLanguage();
+        optionButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.language === selected.code)));
+        sectorPaths.forEach(path => path.classList.toggle('is-current', path.dataset.language === selected.code));
+        syncPagination();
+    };
 
-        optionButtons.push(button);
-        options.appendChild(button);
+    const changePage = (direction, focusIndex = 0) => {
+        const targetPage = Math.max(0, Math.min(pageCount - 1, activePage + direction));
+        if (targetPage === activePage || isChangingLanguage) return;
+        renderPage(targetPage);
+        const selected = selectedLanguage();
+        const preview = visibleLanguages.find(language => language.code === selected.code) || visibleLanguages[0];
+        previewLanguage(preview);
+        optionButtons[Math.min(focusIndex, optionButtons.length - 1)]?.focus();
+    };
+
+    previousPage.addEventListener('click', () => changePage(-1));
+    nextPage.addEventListener('click', () => changePage(1));
+    wheel.addEventListener('pointermove', event => {
+        if (!event.movementX && !event.movementY) return;
+        allowPointerPreview = true;
+        const code = event.target.closest('.language-wheel-sector, .language-wheel-option')?.dataset.language;
+        const language = visibleLanguages.find(item => item.code === code);
+        if (language && !isChangingLanguage) previewLanguage(language);
     });
 
     toggle.addEventListener('click', () => {
@@ -2181,10 +2241,23 @@ async function setupLanguageWheel() {
         else openWheel();
     });
     wheel.addEventListener('pointerleave', () => {
-        if (!isChangingLanguage) previewLanguage(selectedLanguage());
+        if (!isChangingLanguage) {
+            const selected = selectedLanguage();
+            previewLanguage(visibleLanguages.find(language => language.code === selected.code) || visibleLanguages[0]);
+        }
     });
     backdrop.addEventListener('click', () => closeWheel());
     window.addEventListener('keydown', event => {
+        if (event.key === 'Tab' && !wheel.hidden) {
+            const controls = [...wheel.querySelectorAll('button:not(:disabled)')];
+            const first = controls[0], last = controls.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+        if ((event.key === 'PageUp' || event.key === 'PageDown') && !wheel.hidden && !event.defaultPrevented) {
+            event.preventDefault();
+            changePage(event.key === 'PageDown' ? 1 : -1);
+        }
         if (event.key === 'Escape' && !wheel.hidden) {
             event.preventDefault();
             closeWheel();
@@ -2201,12 +2274,12 @@ async function setupLanguageWheel() {
  * ==========================================
  */
 (async function() {
-    bootProgress(0.03, 'Starting local runtime');
+    bootProgress(0.03, shellText("Starting local runtime"));
     await reapplyHAStyles();
-    bootProgress(0.09, 'Loading interface styles');
+    bootProgress(0.09, shellText("Loading interface styles"));
 
     cmode = await window.deltamodBackend.invoke('isCMode', []);
-    bootProgress(0.15, 'Checking controller mode');
+    bootProgress(0.15, shellText("Checking controller mode"));
 
     var ribbon = document.querySelectorAll('.sidebar-button');
     ribbon.forEach(r => {
@@ -2228,9 +2301,9 @@ async function setupLanguageWheel() {
     
     // Initialize Theme prior to initial page loads
     await themeRefresh(false); 
-    bootProgress(0.28, 'Applying active theme');
+    bootProgress(0.28, shellText("Applying active theme"));
     await setupLanguageWheel();
-    bootProgress(0.38, 'Preparing language services');
+    bootProgress(0.38, shellText("Preparing language services"));
 
     // Setup Controller Mode visual adjustments
     if (cmode) {
@@ -2240,18 +2313,18 @@ async function setupLanguageWheel() {
         document.querySelector('.maximize-button').style.display = 'none';
 
         makeGlyphs([
-            { icon: 'game_stick_left', description: "Move cursor" },
-            { icon: 'game_stick_right', description: "Scroll" },
-            { icon: 'cancel', description: "Click" },
-            { icon: 'square_circle', description: "Right click" },
+            { icon: 'game_stick_left', description: shellText("Move cursor") },
+            { icon: 'game_stick_right', description: shellText("Scroll") },
+            { icon: 'cancel', description: shellText("Click") },
+            { icon: 'square_circle', description: shellText("Right click") },
         ]);
 
         if (!localStorage.getItem('seenCModeAlert')) {
             localStorage.setItem('seenCModeAlert', 'true');
             htmlAlert(
-                "Controller mode enabled", 
-                "Controller mode is now enabled! Use Deltamod with your controller. Your left stick can help you move your mouse.", 
-                [{ text: "Ok" }], 
+                shellText("Controller mode enabled"),
+                shellText("Controller mode is now enabled! Use Deltamod with your controller. Your left stick can help you move your mouse."),
+                [{ text: shellText("Ok") }],
                 'stadia_controller'
             );
         }
@@ -2266,11 +2339,11 @@ async function setupLanguageWheel() {
                     return;
                 }
                 var res = await htmlAlert(
-                    "Controller mode",
-                    "It looks like you have a controller connected. Do you want to enable controller mode? Controller mode allows you to use Deltamod with your controller. Your left stick can help you move your mouse.",
+                    shellText("Controller mode"),
+                    shellText("It looks like you have a controller connected. Do you want to enable controller mode? Controller mode allows you to use Deltamod with your controller. Your left stick can help you move your mouse."),
                     [
-                        { text: "Yes", resolveWith: true },
-                        { text: "No", resolveWith: false }
+                        { text: shellText("Yes"), resolveWith: true },
+                        { text: shellText("No"), resolveWith: false }
                     ]
                 );
 
@@ -2282,13 +2355,13 @@ async function setupLanguageWheel() {
     }
 
     if (await offerOfficialProfileImport()) {
-        bootProgress(0.7, 'Waiting for profile import');
+        bootProgress(0.7, shellText("Waiting for profile import"));
         finishBoot();
         return;
     }
 
     var loaded = await window.deltamodBackend.invoke('loadedDeltarune',[]);
-    bootProgress(0.56, 'Finding installed games');
+    bootProgress(0.56, shellText("Finding installed games"));
 
     if (await window.deltamodBackend.invoke('fetchSharedVariable',["gb1click"]) === true) {
         await page('goc-dl');
@@ -2304,16 +2377,16 @@ async function setupLanguageWheel() {
             }
         }, 50);
     });
-    bootProgress(0.72, 'Reading mod sources');
+    bootProgress(0.72, shellText("Reading mod sources"));
 
     // Main App Branching Route
     if (loaded.loaded) {
         var available = await window.deltamodBackend.invoke('fireUpdate', []);
         console.log('Update check complete. Update available:', available);
-        bootProgress(0.84, 'Checking patch tools');
+        bootProgress(0.84, shellText("Checking patch tools"));
 
         var im = await invokeOptional('shouldGoIM', [], false);
-        bootProgress(0.9, 'Preparing file overlay');
+        bootProgress(0.9, shellText("Preparing file overlay"));
         if (im) {
             await page('installmanager');
         } else {
@@ -2332,7 +2405,7 @@ async function setupLanguageWheel() {
     }
 })().catch(error => {
     console.error('Deltamod initialization failed:', error);
-    window.DeltamodBoot?.fail('Continuing');
+    window.DeltamodBoot?.fail(shellText("Continuing"));
 });
 
 function closeAudio() {

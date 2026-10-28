@@ -96,7 +96,7 @@ describe('Chara theme-selector encounter', () => {
         expect(rendererSource).toContain("const CHARA_UNLOCK_FLAG = 'CHARA_THEME_UNLOCKED'");
         expect(rendererSource).toContain("invoke('setUniqueFlag', [CHARA_UNLOCK_FLAG, true])");
         expect(rendererSource).toMatch(
-            /const themeFilterPlaceholder = \(\) => charaEncounterActive\s*\? 'THE TRUE NAME'\s*: t\('theme_filter_placeholder'/
+            /const themeFilterPlaceholder = \(\) => charaEncounterActive\s*\? uiText\(["']THE TRUE NAME["']\)\s*: t\('theme_filter_placeholder'/
         );
         expect(rendererSource).toContain('filterInput.placeholder = themeFilterPlaceholder()');
         expect(rendererSource).toContain("const isUnlockedChara = theme.id === 'chara' && charaUnlocked");

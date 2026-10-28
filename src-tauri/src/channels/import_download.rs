@@ -53,20 +53,21 @@ fn duplicate_decision<D: ChoiceBackend>(
     dialogs: &D,
     existing: deltamod_archive_import_runtime::ExistingMod<'_>,
 ) -> Result<DuplicateDecision, String> {
-    let old_version = existing.old_version.unwrap_or("Unknown");
-    let new_version = existing.new_version.unwrap_or("Unknown");
-    let message = format!(
-        "The mod \"{}\" is already present in your mods.\n\nPresent version: {old_version}\nTo be imported version: {new_version}\n\nHow would you like to proceed?",
-        existing.package_id
+    let unknown = crate::localization::text("Unknown");
+    let old_version = existing.old_version.unwrap_or(&unknown);
+    let new_version = existing.new_version.unwrap_or(&unknown);
+    let message = crate::localization::format(
+        "The mod \"{0}\" is already installed.\n\nInstalled version: {1}\nVersion to import: {2}\n\nHow would you like to proceed?",
+        &[existing.package_id, old_version, new_version],
     );
     match dialogs
         .choose(
             "Import Failed",
             &message,
             &[
-                "Delete old version".into(),
-                "Keep old version".into(),
-                "Cancel import".into(),
+                crate::localization::text("Delete old version"),
+                crate::localization::text("Keep old version"),
+                crate::localization::text("Cancel import"),
             ],
         )
         .map_err(|_| error::internal())?
@@ -80,9 +81,9 @@ fn duplicate_decision<D: ChoiceBackend>(
 
 fn chapter_label(chapter: u8) -> String {
     if chapter == ROOT_DATA {
-        "Chapter select (root data.win)".to_owned()
+        crate::localization::text("Chapter select (root data.win)")
     } else {
-        format!("Chapter {chapter}")
+        crate::localization::format("Chapter {0}", &[&chapter.to_string()])
     }
 }
 
@@ -109,14 +110,15 @@ fn raw_package_plan<D: ChoiceBackend>(
         );
         let file_name = patch.path.rsplit('/').next().unwrap_or(&patch.path);
         let hint = match suggested {
-            Some(chapter) => format!(
-                "Its README points to {}, so that is offered first.",
-                chapter_label(chapter)
+            Some(chapter) => crate::localization::format(
+                "Its README points to {0}, so that is offered first.",
+                &[&chapter_label(chapter)],
             ),
-            None => "Check the mod's GameBanana page if you are unsure.".to_owned(),
+            None => crate::localization::text("Check the mod's GameBanana page if you are unsure."),
         };
-        let message = format!(
-            "This mod was packaged for Deltahub and does not say which chapter \"{file_name}\" patches.\n\n{hint}\n\nWhich chapter does it patch?"
+        let message = crate::localization::format(
+            "This mod was packaged for Deltahub and does not say which chapter \"{0}\" patches.\n\n{1}\n\nWhich chapter does it patch?",
+            &[file_name, &hint],
         );
         let labels = options
             .iter()
@@ -455,7 +457,7 @@ fn collection_file_candidates(profile: &Value) -> Result<Vec<CollectionFileCandi
                     .collect::<String>()
             })
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| format!("GameBanana file {file_id}"));
+            .unwrap_or_else(|| format!("GameBanana #{file_id}"));
         candidates.push(CollectionFileCandidate {
             file_id,
             url,

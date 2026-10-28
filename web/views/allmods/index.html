@@ -1,13 +1,13 @@
 <div class="content-page mods-page library-page">
     <div class="library-toolbar">
         <div class="page-heading">
-            <h1>$$allModsTitle$$</h1>
-            <p>$$community_allmods_subtitle$$</p>
+            <h1 data-i18n="allModsTitle">$$allModsTitle$$</h1>
+            <p data-i18n="community_allmods_subtitle">$$community_allmods_subtitle$$</p>
         </div>
         <div class="library-filter">
-            <label for="gamesShow">$$installation$$</label>
+            <label for="gamesShow" data-i18n="installation">$$installation$$</label>
             <select name="gamesShow" id="gamesShow">
-                <option value="all">$$installmanager_title$$</option>
+                <option value="all" data-i18n="installmanager_title">$$installmanager_title$$</option>
             </select>
 
         </div>
@@ -20,8 +20,8 @@
     </div>
     <div class="mods-scroll">
         <div style="display: none;" class="modlist-error" id="error-banner" role="button" tabindex="0">
-            <h2>$$modFail_bannerTitle$$</h2>
-            <span class="calibri">$$modFail_bannerClick$$</span>
+            <h2 data-i18n="modFail_bannerTitle">$$modFail_bannerTitle$$</h2>
+            <span class="calibri" data-i18n="modFail_bannerClick">$$modFail_bannerClick$$</span>
         </div>
         <table id="modtable">
             <colgroup>
@@ -30,8 +30,8 @@
             </colgroup>
             <thead style="position: sticky; top: -2px;">
                 <tr>
-                    <th>$$mod$$</th>
-                    <th>$$actions$$</th>
+                    <th data-i18n="mod">$$mod$$</th>
+                    <th data-i18n="actions">$$actions$$</th>
                 </tr>
             </thead>
             <tbody id="modlist">
@@ -40,14 +40,14 @@
     </div>
 
     <dialog class="error-list-dialog" id="error-list-dialog">
-            <h2>$$modFail_dialogTitle$$</h2>
-            <span class="calibri">$$modFail_dialogSubtitle$$</span>
+            <h2 data-i18n="modFail_dialogTitle">$$modFail_dialogTitle$$</h2>
+            <span class="calibri" data-i18n="modFail_dialogSubtitle">$$modFail_dialogSubtitle$$</span>
             <div class="error-list-div" id="error-list-div">
 
             </div>
             <div class="error-buttons">
                 <!-- forgive me for this MASSIVE onclick thing, but keeping this and allmods unified is a pain in the ass -->
-                <button onclick="rew(); document.getElementById('error-list-dialog').style.animation = '0.3s closeError ease forwards'; setTimeout(() => { document.getElementById('error-list-dialog').close(); document.getElementById('error-list-dialog').style.animation = '0.3s openError ease forwards'; }, 300);" style="width: 100%; padding: 10px;">$$allmods_ok$$</button>
+                <button onclick="rew(); document.getElementById('error-list-dialog').style.animation = '0.3s closeError ease forwards'; setTimeout(() => { document.getElementById('error-list-dialog').close(); document.getElementById('error-list-dialog').style.animation = '0.3s openError ease forwards'; }, 300);" style="width: 100%; padding: 10px;" data-i18n="allmods_ok">$$allmods_ok$$</button>
             </div>
         </dialog>
 </div>

@@ -1,40 +1,44 @@
-<button onclick="page('gamebanana-browse')">Back</button>
-<br>
-<h1>Comments</h1>
-<div class="comments">
-    <div class="commentBox" style="display: none;" id="myCommentBox">
-        <img src="" alt="" width="50" height="50" id="gbPic">
-        <div class="commentArea">
-            <textarea name="comment" id="comment" maxlength="10000" required style="width: calc(100% - 10px); height: 150px; background-color: rgba(0,0,0,0.5); color: white;" placeholder="Type your comment here..." aria-label="Comment text"></textarea>
-            <br><br>
-            <button type="button" onclick="window.currentPageStack.send()" id="sendBtn">Send comment</button>
+<div class="content-page comments-page">
+    <button type="button" onclick="window.currentPageStack.backToShop()" data-i18n="gb_back_to_shop">Back to Mod Shop</button>
+    <h1 data-i18n="gb_comments">Comments</h1>
+    <p id="commentLoginHint" class="calibri" data-i18n="gb_comment_login">Log in to GameBanana in Settings to leave a comment.</p>
+    <div class="comments">
+        <div class="commentBox" id="myCommentBox" hidden>
+            <img src="" alt="" width="50" height="50" id="gbPic">
+            <div class="commentArea">
+                <label class="comment-compose-label" for="comment" data-i18n="gb_comment_text">Comment text</label>
+                <textarea name="comment" id="comment" maxlength="10000" required dir="auto" placeholder="Type your comment here…" data-i18n-placeholder="gb_comment_placeholder"></textarea>
+                <button type="button" onclick="window.currentPageStack.send()" id="sendBtn" data-i18n="gb_send_comment">Send comment</button>
+            </div>
         </div>
+        <p id="commentsStatus" class="calibri" role="status" aria-live="polite">Loading comments…</p>
+        <button type="button" id="retryComments" onclick="window.currentPageStack.retryComments()" data-i18n="refine_retry" hidden>Retry</button>
+        <div id="commentRecords"></div>
     </div>
+    <nav class="comment-pagination" aria-label="Comments" data-i18n-aria-label="gb_comments">
+        <button type="button" id="previousComments" onclick="window.currentPageStack.previousComments()" data-i18n="gb_previous_comments" hidden>Previous comments</button>
+        <output id="commentsPage"></output>
+        <button type="button" id="nextComments" onclick="window.currentPageStack.nextComments()" data-i18n="gb_next_comments" hidden>Next comments</button>
+    </nav>
 </div>
 <style>
-.stamp {
-    padding: 4px;
-    padding-left: 10px;
-    padding-right: 10px;
-    font-size: 0.95em;
-    background-color: var(--theme-color-rgbaless);
-    color: white;
-    border-radius: 5px;
-}
-.commentBox {
-    background-color: rgba(0,0,0,0.1);
-    border: 1px solid var(--theme-color);
-    border-radius: 5px;
-    padding: 10px;
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 15px;
-    margin-bottom: 10px;
-}
-.commentArea {
-    width: calc(100% - 55px);
-}
+.comments-page { max-width:1100px; margin-inline:auto; }
+.stamp { padding:4px 10px; font-size:.95em; background-color:var(--theme-color-rgbaless); color:white; border-radius:5px; overflow-wrap:anywhere; }
+.commentBox { background-color:rgba(0,0,0,.1); border:1px solid var(--theme-color); border-radius:5px; padding:12px; display:flex; align-items:flex-start; gap:15px; margin-block:12px; margin-inline-start:calc(var(--reply-depth, 0) * 20px); }
+.commentBox[hidden] { display:none; }
+.commentBox > img { flex-shrink:0; border-radius:16px; object-fit:cover; }
+.comment-reply { border-inline-start-width:4px; }
+.commentArea { min-width:0; flex:1; }
+.comment-compose-label { display:block; margin-bottom:8px; }
+#comment { box-sizing:border-box; width:100%; min-height:150px; margin-bottom:12px; resize:vertical; background:var(--panel-bg-strong, rgba(0,0,0,.5)); color:var(--text-color, white); }
+.comment-metadata { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin-bottom:10px; font-family:system-ui,sans-serif; }
+.comment-author { color:var(--theme-color); font-weight:600; overflow-wrap:anywhere; }
+.comment-metadata time, .comment-load-note { font-size:12px; color:var(--muted-text, #ccc); }
+.comment-text { white-space:pre-wrap; overflow-wrap:anywhere; }
+.stampsArea { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+.comment-more-replies { display:inline-block; margin-top:12px; color:var(--theme-color); }
+.comment-pagination { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; margin-block:20px; }
+@media(max-width:700px) { .commentBox { gap:9px; margin-inline-start:calc(var(--reply-depth, 0) * 8px); } .commentBox > img { width:36px; height:36px; } }
 </style>
 JSL
-TITLE[Comments]
+TITLE[$$gb_comments$$]

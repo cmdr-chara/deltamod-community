@@ -523,6 +523,14 @@ html.roaring-knight-awakened #deltamod-boot-root {
     filter: grayscale(1);
 }
 
+/* A full-surface grayscale layer with nested backdrop filters recomposes the
+ * animated background every frame. Keep the Knight palette and artwork, but
+ * give its panels flat surfaces while either monochrome state is active. */
+html:is(.roaring-knight-awakened, .roaring-knight-blackout) * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
 html.roaring-knight-awakened .dmodicon {
     opacity: 0.64;
 }
@@ -572,6 +580,7 @@ html.roaring-knight-blackout .dmodicon {
         opacity 260ms linear;
 }
 
+/* A short pixel-art interruption: arrival, three cuts, then the live theme. */
 .theme-transition-overlay {
     position: fixed;
     inset: 0;
@@ -583,66 +592,26 @@ html.roaring-knight-blackout .dmodicon {
     transition: opacity 120ms linear;
 }
 
-.theme-transition-overlay.is-active {
-    opacity: 1;
-}
+.theme-transition-overlay.is-active { opacity: 1; }
 
 .theme-transition-blackout {
     position: absolute;
     inset: 0;
-    z-index: 0;
-    background:
-        radial-gradient(circle at 50% 52%, transparent 0 7%, rgba(0, 0, 0, 0.7) 33%),
-        rgba(0, 0, 0, 0.46);
-    animation: roaring-knight-blackout-in 480ms ease-out both;
-}
-
-.theme-transition-sigil {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 1;
-    width: min(46vmin, 430px);
-    aspect-ratio: 1;
-    border: 2px solid rgba(255, 255, 255, 0.48);
-    box-shadow:
-        inset 0 0 0 14px rgba(0, 0, 0, 0.82),
-        inset 0 0 0 16px rgba(255, 255, 255, 0.12),
-        0 0 45px rgba(255, 255, 255, 0.13);
-    transform: translate(-50%, -50%) rotate(45deg) scale(0.15);
-    opacity: 0;
-    animation: roaring-knight-sigil-in 780ms cubic-bezier(0.12, 0.78, 0.2, 1) 120ms both;
-}
-
-.theme-transition-sigil::before,
-.theme-transition-sigil::after {
-    position: absolute;
-    inset: 13%;
-    border: 1px solid rgba(255, 255, 255, 0.36);
-    content: '';
-}
-
-.theme-transition-sigil::after {
-    inset: 31%;
-    background: rgba(0, 0, 0, 0.66);
+    background: #030304;
 }
 
 .theme-transition-knight-stage {
     position: absolute;
     top: 50%;
     left: 50%;
-    z-index: 3;
-    width: clamp(190px, 24vmin, 340px);
+    z-index: 2;
+    width: 266px;
+    max-width: 48vmin;
     aspect-ratio: 133 / 141;
     transform: translate(-50%, -50%);
 }
 
 .theme-transition-knight {
-    --echo-index: 0;
-    --echo-delay: 0ms;
-    --echo-shift: 0px;
-    --echo-scale: 1;
-    --echo-opacity: 1;
     --frame-offset-x: 0%;
     --frame-offset-y: 0%;
     position: absolute;
@@ -650,228 +619,73 @@ html.roaring-knight-blackout .dmodicon {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    opacity: 0;
     image-rendering: pixelated;
-    filter:
-        brightness(0)
-        drop-shadow(2px 0 0 rgba(255, 255, 255, 0.88))
-        drop-shadow(-2px 0 0 rgba(255, 255, 255, 0.88))
-        drop-shadow(0 2px 0 rgba(255, 255, 255, 0.88))
-        drop-shadow(0 -2px 0 rgba(255, 255, 255, 0.88));
-    transform:
-        translate(
-            calc(var(--echo-shift) + var(--frame-offset-x)),
-            var(--frame-offset-y)
-        )
-        scale(var(--echo-scale));
-    animation: roaring-knight-silhouette-in 700ms cubic-bezier(0.15, 0.78, 0.2, 1) var(--echo-delay) both;
-}
-
-.theme-transition-knight.is-echo {
-    filter: brightness(0) invert(1);
-    mix-blend-mode: screen;
-}
-
-.theme-transition-knight.is-main {
-    z-index: 2;
-}
-
-.theme-transition-soul {
-    position: absolute;
-    top: calc(50% + 5px);
-    left: 50%;
-    z-index: 5;
-    color: white;
-    font-family: "Pixel", sans-serif;
-    font-size: clamp(15px, 2.2vmin, 25px);
-    line-height: 1;
     opacity: 0;
-    text-shadow: 0 0 8px white, 0 0 22px white;
-    transform: translate(-50%, -50%) scale(0.2);
-    animation: roaring-knight-soul-in 560ms steps(5, end) 390ms both;
-}
-
-.theme-transition-particles {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 2;
-}
-
-.theme-transition-particles span {
-    --particle-angle: 0deg;
-    --particle-distance: 20vmin;
-    --particle-delay: 0ms;
-    position: absolute;
-    width: clamp(3px, 0.55vmin, 8px);
-    aspect-ratio: 1;
-    border: 1px solid white;
-    opacity: 0;
-    transform: rotate(var(--particle-angle)) translateY(0) rotate(45deg);
-    animation: roaring-knight-particle-out 820ms ease-out var(--particle-delay) both;
+    transform: translate(var(--frame-offset-x), var(--frame-offset-y));
+    animation: knight-arrival 420ms steps(6, end) 220ms both;
 }
 
 .theme-transition-rift {
     position: absolute;
-    z-index: 6;
+    z-index: 3;
     top: 50%;
     left: 50%;
-    width: 170vmax;
-    height: clamp(4px, 0.55vw, 10px);
+    width: min(620px, 72vmin);
+    height: 3px;
     opacity: 0;
     background: white;
-    box-shadow:
-        0 0 8px white,
-        0 0 24px rgba(255, 255, 255, 0.92),
-        0 0 70px rgba(255, 255, 255, 0.48);
-    transform: translate(-50%, -50%) rotate(-28deg) scaleX(0.02);
+    transform: translate(-50%, -50%) rotate(var(--cut-angle, -28deg)) scaleX(.02);
 }
 
-.theme-transition-overlay.is-impacting .theme-transition-rift {
-    animation: roaring-knight-rift-open 780ms cubic-bezier(0.1, 0.82, 0.2, 1) both;
-}
-
-.theme-transition-overlay.is-impacting .theme-transition-sigil {
-    animation: roaring-knight-sigil-impact 760ms ease-out both;
+.theme-transition-rift.is-cut {
+    animation: knight-cut 220ms steps(5, end) both;
 }
 
 .theme-transition-overlay.is-releasing {
     opacity: 0;
-    transition-duration: 490ms;
+    transition-duration: 600ms;
 }
 
-@keyframes roaring-knight-blackout-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+.theme-transition-skip {
+    position: absolute;
+    inset-inline-end: 24px;
+    bottom: 24px;
+    z-index: 4;
+    pointer-events: auto;
+    padding: 9px 14px;
+    border: 1px solid #777;
+    background: #111;
+    color: white;
+    font: 14px/1.4 "Pixel", system-ui, sans-serif;
+    cursor: pointer;
 }
 
-@keyframes roaring-knight-sigil-in {
-    0% { opacity: 0; transform: translate(-50%, -50%) rotate(25deg) scale(0.15); }
-    45% { opacity: 0.72; }
-    100% { opacity: 1; transform: translate(-50%, -50%) rotate(45deg) scale(1); }
+.theme-transition-skip:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 4px;
 }
 
-@keyframes roaring-knight-sigil-impact {
-    0% { opacity: 1; transform: translate(-50%, -50%) rotate(45deg) scale(1); }
-    28% { opacity: 1; transform: translate(-50%, -50%) rotate(60deg) scale(1.12); }
-    100% { opacity: 0; transform: translate(-50%, -50%) rotate(90deg) scale(1.5); }
+@keyframes knight-arrival {
+    0% { opacity: 0; transform: translate(var(--frame-offset-x), calc(var(--frame-offset-y) + 12px)); }
+    100% { opacity: 1; transform: translate(var(--frame-offset-x), var(--frame-offset-y)); }
 }
 
-@keyframes roaring-knight-silhouette-in {
-    0% {
-        opacity: 0;
-        transform:
-            translate(
-                calc(-38px + var(--frame-offset-x)),
-                var(--frame-offset-y)
-            )
-            scale(0.72);
-    }
-    62% { opacity: var(--echo-opacity); }
-    100% {
-        opacity: var(--echo-opacity);
-        transform:
-            translate(
-                calc(var(--echo-shift) + var(--frame-offset-x)),
-                var(--frame-offset-y)
-            )
-            scale(var(--echo-scale));
-    }
-}
-
-@keyframes roaring-knight-soul-in {
-    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
-    48% { opacity: 1; transform: translate(-50%, -50%) scale(1.45); }
-    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-}
-
-@keyframes roaring-knight-particle-out {
-    0% { opacity: 0; transform: rotate(var(--particle-angle)) translateY(0) rotate(45deg); }
-    18% { opacity: 0.9; }
-    100% { opacity: 0; transform: rotate(var(--particle-angle)) translateY(var(--particle-distance)) rotate(135deg); }
-}
-
-@keyframes roaring-knight-rift-open {
-    0% { opacity: 0; transform: translate(-50%, -50%) rotate(-28deg) scaleX(0.02); }
-    12% { opacity: 1; transform: translate(-50%, -50%) rotate(-28deg) scaleX(1) scaleY(1); }
-    45% { opacity: 1; transform: translate(-50%, -50%) rotate(-28deg) scaleX(1.03) scaleY(2.4); }
-    100% { opacity: 0; transform: translate(-50%, -50%) rotate(-28deg) scaleX(1.08) scaleY(0.08); }
+@keyframes knight-cut {
+    0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(.02); }
+    20% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(1); }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(1.04); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .theme-transition-overlay {
-        display: none !important;
-    }
-
+    .theme-transition-overlay { display: none !important; }
     .theme-environment-sprite {
         animation: none !important;
         transform: translate(-50%, -50%) !important;
     }
-
     .theme-environment-sprite.anchor-bottom {
         transform: translate(-50%, -100%) !important;
     }
-}
-
-/* Awakening: omen, fountain, arrival, three cuts, monochrome reveal. */
-.theme-transition-overlay::before, .theme-transition-overlay::after {
-    content: ''; position: absolute; left: 0; right: 0; height: 9vh; background: #000; z-index: 8;
-}
-.theme-transition-overlay::before { top: 0; }
-.theme-transition-overlay::after { bottom: 0; }
-.theme-transition-blackout { background: radial-gradient(ellipse at 50% 55%, #10131de8, #000 72%); }
-.theme-transition-sigil { animation-duration: 2100ms; animation-delay: 600ms; }
-.theme-transition-knight { animation-delay: calc(2400ms + var(--echo-delay)); }
-.theme-transition-soul { animation-delay: 700ms; }
-.theme-transition-particles span { animation-delay: calc(4200ms + var(--particle-delay)); animation-duration: 1100ms; }
-.theme-transition-fountain { position: absolute; inset: 12% 15% 15%; z-index: 1; overflow: hidden; }
-.theme-transition-fountain span {
-    position: absolute; bottom: 0; left: calc(15% + var(--ray) * 4.7%); height: 100%;
-    width: 2%; background: linear-gradient(0deg, #d2d8f0aa, #454a6970 45%, transparent);
-    transform-origin: bottom; opacity: 0;
-    animation: knight-fountain-rise 3200ms cubic-bezier(.12,.6,.3,1) calc(850ms + var(--ray) * 35ms) both;
-}
-.theme-transition-flight {
-    position: absolute; left: 50%; top: 50%; width: clamp(140px, 22vmin, 320px); z-index: 3;
-    image-rendering: pixelated; opacity: 0; animation: knight-flight 1700ms ease-in-out 1300ms both;
-}
-.theme-transition-title {
-    position: absolute; bottom: 16%; width: 100%; text-align: center; z-index: 7;
-    font: 14px/1.5 system-ui, sans-serif; letter-spacing: .55em; color: #e6e9f1;
-    opacity: 0; animation: knight-title 1900ms ease 3500ms both;
-}
-.theme-transition-skip {
-    position: absolute; right: 24px; bottom: 24px; z-index: 10; pointer-events: auto;
-    border: 1px solid #777; background: #111; color: white; padding: 9px 14px;
-    font: 13px system-ui, sans-serif; cursor: pointer;
-}
-.theme-transition-skip:focus-visible { outline: 2px solid white; outline-offset: 4px; }
-.theme-transition-overlay .theme-transition-rift.is-cut {
-    animation: knight-cut 680ms cubic-bezier(.1,.82,.2,1) both;
-}
-.theme-transition-overlay.is-impacting > .theme-transition-rift:not(.is-cut) { display: none; }
-.theme-transition-overlay.is-releasing { transition-duration: 1300ms; }
-@keyframes knight-fountain-rise {
-    0% { opacity: 0; transform: scaleY(.02); }
-    30% { opacity: .7; transform: scaleY(.8) skewX(-7deg); }
-    65% { opacity: .45; transform: scaleY(1.1) skewX(4deg); }
-    100% { opacity: 0; transform: scaleY(1.5); }
-}
-@keyframes knight-flight {
-    0% { opacity: 0; transform: translate(-50%, 65%) scale(.3); }
-    35% { opacity: .85; }
-    75% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
-    100% { opacity: 0; transform: translate(-50%, -80%) scale(1.15); }
-}
-@keyframes knight-title {
-    0% { opacity: 0; transform: translateY(12px); }
-    30%, 75% { opacity: 1; transform: translateY(0); }
-    100% { opacity: 0; transform: translateY(-4px); }
-}
-@keyframes knight-cut {
-    0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(.02); }
-    12% { opacity: .9; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(1); }
-    100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--cut-angle)) scaleX(1.08) scaleY(.08); }
 }
 
 /* theme-scene-effects:end */
@@ -1374,7 +1188,7 @@ body {
     stroke: rgba(255, 255, 255, 0.14);
     stroke-width: 2;
     opacity: 1;
-    filter: brightness(0.52) saturate(0.82) contrast(1.08);
+    filter: brightness(0.62) saturate(0.9) contrast(1.05);
     transition:
         opacity var(--motion-fast) linear,
         stroke var(--motion-fast) linear,
@@ -1386,7 +1200,7 @@ body {
 
 .language-wheel-sector.is-current {
     stroke: var(--theme-color);
-    filter: brightness(0.72) saturate(0.96) contrast(1.05);
+    filter: brightness(0.8) saturate(1) contrast(1.05);
 }
 
 .language-wheel-sector.is-preview {
@@ -1506,13 +1320,68 @@ body {
     pointer-events: none;
 }
 
-.language-wheel-current img {
-    width: 82px;
-    height: 58px;
-    object-fit: cover;
-    border-radius: 6px;
-    image-rendering: auto;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+/* Invisible native buttons keep each flag-filled sector keyboard accessible.
+   Focus is shown by the corresponding wedge's preview stroke. */
+#language-wheel .language-wheel-option {
+    width: 52px;
+    height: 40px;
+    pointer-events: auto;
+}
+#language-wheel .language-wheel-option:focus-visible { outline: none; }
+#language-wheel .language-wheel-current {
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+}
+#language-wheel #language-wheel-current-name {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1.2;
+}
+.language-wheel-pagination {
+    display: flex;
+    width: 104px;
+    height: 40px;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    direction: ltr;
+    pointer-events: auto;
+}
+#language-wheel .language-wheel-pagination button {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: white;
+    font-family: system-ui, sans-serif;
+    font-size: 28px;
+    line-height: 1;
+}
+#language-wheel .language-wheel-pagination button:hover:not(:disabled) {
+    background: var(--theme-color-point3);
+}
+#language-wheel .language-wheel-pagination button:focus-visible {
+    outline: 2px solid white;
+    outline-offset: -4px;
+}
+#language-wheel .language-wheel-pagination button:disabled { opacity: .25; }
+#language-wheel-page {
+    min-width: 24px;
+    font-family: system-ui, sans-serif;
+    font-size: 11px;
+    white-space: nowrap;
+    unicode-bidi: isolate;
 }
 
 .gamebanana-account {

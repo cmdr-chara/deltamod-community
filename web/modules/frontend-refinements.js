@@ -6,9 +6,16 @@
     if (root) root.FrontendRefinements = api;
 })(typeof window !== 'undefined' ? window : globalThis, root => {
     'use strict';
-    const text = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase();
+    const locale = () => root.Localization?.getLocale?.();
+    const text = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase(locale());
     const t = (key, fallback, ...args) => root.Localization?.t(key, fallback, ...args)
-        ?? args.reduce((value, arg, i) => value.replaceAll(`{${i}}`, String(arg)), fallback);
+        ?? String(fallback).replace(/\{(\d+)\}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const number = value => root.Localization?.number?.(value)
+        ?? new Intl.NumberFormat(locale()).format(value);
+    const bind = (element, key, fallback) => {
+        if (root.Localization?.bind) root.Localization.bind(element, key, fallback);
+        else element.textContent = t(key, fallback);
+    };
     const onClose = cleanup => (root._onClosePage ||= []).push(cleanup);
 
     function matches(mod, query) {
@@ -16,7 +23,7 @@
         return text(query).trim().split(/\s+/).every(word => haystack.includes(word));
     }
 
-    function compareMods(a, b, order, collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })) {
+    function compareMods(a, b, order, collator = new Intl.Collator(locale(), { numeric: true, sensitivity: 'base' })) {
         const name = () => collator.compare(String(a.name ?? ''), String(b.name ?? ''));
         if (order === 'desc') return -name();
         if (order === 'size-asc') return (Number(a.size) || 0) - (Number(b.size) || 0) || name();
@@ -58,13 +65,17 @@
             });
             groups.forEach(({ row, members }) => { row.hidden = members.every(record => record.row.hidden); });
             if (clear) clear.hidden = query.length === 0;
-            if (count) count.textContent = t('refine_mod_count', '{0} of {1} mods', visible, records.length);
+            if (count) count.textContent = t('refine_mod_count', '{0} of {1} mods', number(visible), number(records.length));
             emptyCell.textContent = t('refine_no_matches', 'No matching mods. Clear the search or change the filter.');
             emptyRow.hidden = !done || visible !== 0 || records.length === 0;
             if (done && !emptyRow.isConnected) tbody.append(emptyRow);
         };
         const reorder = () => {
-            const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+            if (disposed || !tbody.isConnected) return;
+            const focused = tbody.contains(root.document.activeElement) ? root.document.activeElement : null;
+            const selection = focused && typeof focused.selectionStart === 'number'
+                ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+            const collator = new Intl.Collator(locale(), { numeric: true, sensitivity: 'base' });
             records.sort((a, b) => compareMods(a.mod, b.mod, sort?.value, collator));
             groups.forEach(group => group.row.remove());
             groups = [];
@@ -72,15 +83,21 @@
             let group;
             records.forEach(record => {
                 if (sort?.value === 'author') {
-                    const author = String(Array.isArray(record.mod.author) ? record.mod.author[0] || 'Unknown' : record.mod.author || 'Unknown');
-                    if (!group || group.author !== author) {
+                    const author = String(Array.isArray(record.mod.author) ? record.mod.author[0] ?? '' : record.mod.author ?? '');
+                    const missingAuthor = !author;
+                    if (!group || group.author !== author || group.missingAuthor !== missingAuthor) {
                         const row = root.document.createElement('tr');
                         const cell = root.document.createElement('th');
                         cell.colSpan = 2;
-                        cell.textContent = author;
+                        if (missingAuthor) bind(cell, 'unknown', 'Unknown');
+                        else {
+                            cell.textContent = author;
+                            cell.dir = 'auto';
+                            cell.dataset.userContent = '';
+                        }
                         row.className = 'mod-author-heading';
                         row.append(cell);
-                        group = { author, row, members: [] };
+                        group = { author, missingAuthor, row, members: [] };
                         groups.push(group);
                         fragment.append(row);
                     }
@@ -90,6 +107,8 @@
             });
             tbody.append(fragment, emptyRow);
             refresh();
+            focused?.focus({ preventScroll: true });
+            if (selection) focused.setSelectionRange(...selection);
         };
         listen(input, 'input', refresh);
         listen(input, 'keydown', event => {
@@ -102,7 +121,7 @@
             refresh();
         });
         if (filter) predicate = mod => filter.value === 'all' || mod.game === filter.value;
-        listen(root, 'deltamod-language-change', refresh);
+        listen(root, 'deltamod-language-change', () => sort ? reorder() : refresh());
         onClose(() => { disposed = true; listeners.forEach(remove => remove()); records.length = 0; });
         return {
             add(mod, row) { if (!disposed && row) records.push({ mod, row }); },
@@ -162,18 +181,18 @@
         }
         control.disabled = true;
         control.setAttribute('aria-busy', 'true');
-        status.textContent = t('refine_saving', 'Saving…');
+        bind(status, 'refine_saving', 'Saving…');
         status.classList.remove('is-error');
         try {
             await save();
-            status.textContent = t('refine_saved', 'Saved');
+            bind(status, 'refine_saved', 'Saved');
             control.removeAttribute('aria-invalid');
             return true;
         } catch (error) {
             rollback?.();
             control.setAttribute('aria-invalid', 'true');
             status.classList.add('is-error');
-            status.textContent = t('refine_save_failed', 'Not saved. Try again.');
+            bind(status, 'refine_save_failed', 'Not saved. Try again.');
             status.title = String(error?.message || error);
             return false;
         } finally {
@@ -190,12 +209,12 @@
         cell.className = 'mod-search-empty calibri';
         const message = root.document.createElement('p');
         message.setAttribute('role', 'alert');
-        message.textContent = t('refine_load_failed', 'Could not load the mod list.');
+        bind(message, 'refine_load_failed', 'Could not load the mod list.');
         const detail = root.document.createElement('small');
         detail.textContent = String(error?.message || error);
         const retry = root.document.createElement('button');
         retry.type = 'button';
-        retry.textContent = t('refine_retry', 'Retry');
+        bind(retry, 'refine_retry', 'Retry');
         retry.addEventListener('click', () => root.page(''));
         cell.append(message, detail, root.document.createElement('br'), retry);
         row.append(cell);

@@ -46,11 +46,11 @@ describe('Nexus renderer policy', () => {
 
         expect(shop).toContain("Number(error?.status) === 403");
         expect(shop).toContain("error?.code === 'NEXUS_MANUAL_DOWNLOAD_REQUIRED'");
-        expect(shop).toContain("{ text: 'Open Nexus Mods', resolveWith: 'open' }");
-        expect(shop).toContain("{ text: 'Import archive', resolveWith: 'import' }");
+        expect(shop).toMatch(/text:\s*\(\)\s*=>\s*\(?t\("shop_ui_open_nexus_mods", "Open Nexus Mods"\)\)?,\s*resolveWith: 'open'/);
+        expect(shop).toMatch(/text:\s*\(\)\s*=>\s*\(?t\("shop_ui_import_archive", "Import archive"\)\)?,\s*resolveWith: 'import'/);
         expect(shop).toContain("window.deltamodBackend.invoke('importMod', [])");
         expect(shop).toContain("phase: manual ? 'manual' : 'failed'");
-        expect(shop).toContain("manual: 'Website confirmation required'");
+        expect(shop).toContain("manual: ['shop_ui_website_confirmation_required', 'Website confirmation required']");
         expect(shop).toMatch(/const authorizationRequired = \[[\s\S]*?'NEXUS_AUTH_REQUIRED'[\s\S]*?Number\(error\?\.status\) !== 403/);
     });
 

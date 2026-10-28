@@ -169,7 +169,10 @@
         if (!Array.isArray(data)) {
             return Promise.reject(new TypeError('Backend payload must be an array.'));
         }
-        return tauriInvoke('backend_invoke', { channel, data });
+        const request = { channel, data };
+        const locale = root.Localization?.getLanguage();
+        if (typeof locale === 'string') request.locale = locale;
+        return tauriInvoke('backend_invoke', request);
     }
 
     async function invokeOptional(channel, data = [], fallback = undefined) {
@@ -231,6 +234,12 @@
             if (unlisten) unlisten();
         };
     }
+
+    // A read-only round trip delivers the selected locale to native dialogs and
+    // menus immediately, including while the current renderer view stays mounted.
+    root.addEventListener?.('deltamod-language-change', () => {
+        invokeOptional('version', [], null).catch(() => {});
+    });
 
     root.addEventListener?.('pagehide', () => {
         if (!protocolRendererSubscription) return;
@@ -314,6 +323,7 @@
                 if (response?.ok) return response.status;
                 const error = new Error(response?.error?.message || 'Nexus Mods sign-in failed.');
                 error.code = response?.error?.code || 'NEXUS_SSO_FAILED';
+                if (typeof response?.error?.messageSource === 'string') error.messageSource = response.error.messageSource;
                 throw error;
             }),
             cancelNexusSso: () => invokeOptional('modSources:cancelNexusSso', [], false),

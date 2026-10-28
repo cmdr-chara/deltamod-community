@@ -55,7 +55,13 @@ impl OAuthFailure {
     }
 
     pub fn response(&self) -> Value {
-        let mut error = json!({"code": self.code, "message": self.message});
+        let mut error = json!({
+            "code": self.code,
+            "message": crate::localization::text(self.message),
+            // Only fixed app-owned prose enters OAuthFailure. Preserve its
+            // source so an already mounted renderer can change language.
+            "messageSource": self.message
+        });
         if let Some(status) = self.status {
             error["status"] = json!(status);
         }
@@ -493,9 +499,37 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
         == 0
 }
 
+fn escape_callback_html(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+fn callback_response_body(language: &str, direction: &str, title: &str, message: &str) -> String {
+    let language = escape_callback_html(language);
+    let direction = escape_callback_html(direction);
+    let title = escape_callback_html(title);
+    let message = escape_callback_html(message);
+    format!(
+        "<!doctype html><html lang=\"{language}\" dir=\"{direction}\"><head><meta charset=\"utf-8\"><title>{title}</title></head><body><main><h1>{title}</h1><p>{message}</p></main></body></html>"
+    )
+}
+
 fn write_callback_response(stream: &mut TcpStream, status: &str, title: &str, message: &str) {
-    let body = format!(
-        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>{title}</title><body><main><h1>{title}</h1><p>{message}</p></main></body></html>"
+    let body = callback_response_body(
+        crate::localization::language(),
+        crate::localization::direction(),
+        &crate::localization::text(title),
+        &crate::localization::text(message),
     );
     let headers = format!(
         "HTTP/1.1 {status}\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\n\r\n",
@@ -794,6 +828,10 @@ fn run_login(
         ));
     }
     store_tokens(state, &tokens)?;
+    let name_fallback = user.name.is_none();
+    let name = user
+        .name
+        .unwrap_or_else(|| crate::localization::text("Nexus Mods user"));
     Ok(json!({
         "ok": true,
         "status": {
@@ -804,7 +842,8 @@ fn run_login(
             "ssoPending": false,
             "personalKeyFallbackAllowed": false,
             "valid": true,
-            "name": user.name.unwrap_or_else(|| "Nexus Mods user".to_owned()),
+            "name": name,
+            "nameFallback": name_fallback,
             "userId": user.user_id,
             "premium": user.is_premium.unwrap_or(false),
             "supporter": user.is_supporter.unwrap_or(false)
@@ -859,6 +898,38 @@ pub fn pending(state: &AppState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn callback_copy_is_escaped_and_carries_its_language_and_direction() {
+        let body = callback_response_body(
+            "ar",
+            "rtl",
+            "تم التفويض <Nexus> & \"Deltamod\"",
+            "يمكنك إغلاق الصفحة. <script>alert('x')</script>",
+        );
+        assert!(body.contains("<html lang=\"ar\" dir=\"rtl\">"));
+        assert!(body.contains("تم التفويض &lt;Nexus&gt; &amp; &quot;Deltamod&quot;"));
+        assert!(body.contains("يمكنك إغلاق الصفحة. &lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;"));
+        assert!(!body.contains("<script>"));
+    }
+
+    #[test]
+    fn oauth_failure_keeps_protocol_fields_and_owned_translation_source() {
+        let failure = OAuthFailure::new(
+            "NEXUS_AUTH_FAILED",
+            "Nexus Mods rejected the authorization or this operation.",
+        )
+        .with_status(StatusCode::UNAUTHORIZED);
+        let response = failure.response();
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "NEXUS_AUTH_FAILED");
+        assert_eq!(response["error"]["status"], 401);
+        assert_eq!(response["error"]["messageSource"], failure.message);
+        assert_eq!(
+            response["error"]["message"],
+            crate::localization::text(failure.message)
+        );
+    }
 
     #[test]
     fn pkce_and_state_are_bounded() {

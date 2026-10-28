@@ -95,8 +95,13 @@ pub fn dispatch(
         }
         "patchAndRun" => {
             let selected = selected_mods(data)?;
-            let compatibility = runtime::mod_list(state, "patchAndRun")?;
-            if !selected_mods_are_compatible(&compatibility, &selected) {
+            let vanilla = selected.is_empty();
+            let compatible = vanilla
+                || selected_mods_are_compatible(
+                    &runtime::mod_list(state, "patchAndRun")?,
+                    &selected,
+                );
+            if !compatible {
                 let _ = app.emit(
                     "gplog",
                     json!({
@@ -108,12 +113,17 @@ pub fn dispatch(
                 let _ = app.emit("page", "main");
                 return Err("A selected mod is unavailable or incompatible with the active game installation.".into());
             }
-            if let Some(bundle) = original_mac_bundle(
-                state.patching.platform,
-                state.patching.definition.content_root.as_deref(),
-                &state.patching.game_root,
-                &state.data_root.root,
-            ) {
+            if let Some(bundle) = (!vanilla)
+                .then(|| {
+                    original_mac_bundle(
+                        state.patching.platform,
+                        state.patching.definition.content_root.as_deref(),
+                        &state.patching.game_root,
+                        &state.data_root.root,
+                    )
+                })
+                .flatten()
+            {
                 let message = format!(
                     "This installation uses your original game at \"{}\". To keep it untouched, Deltamod only applies mods to its own copy on macOS. Open Options → Installation → Install Manager, add the game again, and switch to the new installation.",
                     bundle.display()
@@ -137,7 +147,15 @@ pub fn dispatch(
                 store: state.data_root.root.join("lifecycle-store"),
                 workspace: state.data_root.root.join("lifecycle-workspaces"),
             };
-            let result = if hash_checks {
+            let _ = app.emit(
+                "gplog",
+                json!({
+                    "operationId": id,
+                    "phase": if vanilla { "restoring" } else { "preparing" },
+                    "percent": -1.0
+                }),
+            );
+            let result = if hash_checks && !vanilla {
                 state
                     .patching
                     .check_selected_legacy_mods(&selected)
@@ -148,13 +166,7 @@ pub fn dispatch(
                             &lifecycle,
                             &state.game,
                             |progress| {
-                                let _ = app.emit(
-                                    "gplog",
-                                    json!({
-                                        "log": progress.log.unwrap_or_default(),
-                                        "percent": progress.percent.unwrap_or(-1.0)
-                                    }),
-                                );
+                                let _ = app.emit("gplog", progress);
                             },
                             || state.patch_cancelled.load(Ordering::Acquire),
                         )
@@ -166,18 +178,13 @@ pub fn dispatch(
                     &lifecycle,
                     &state.game,
                     |progress| {
-                        let _ = app.emit(
-                            "gplog",
-                            json!({
-                                "log": progress.log.unwrap_or_default(),
-                                "percent": progress.percent.unwrap_or(-1.0)
-                            }),
-                        );
+                        let _ = app.emit("gplog", progress);
                     },
                     || state.patch_cancelled.load(Ordering::Acquire),
                 )
             };
             match result {
+                Ok(_) if vanilla => Ok(Some(json!(true))),
                 Ok(result) if result.patched => {
                     let mods = state
                         .patching

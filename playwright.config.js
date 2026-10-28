@@ -10,6 +10,8 @@ module.exports = defineConfig({
     workers: 1,
     retries: 0,
     use: {
+        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+            ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {},
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure'
     }

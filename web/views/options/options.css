@@ -411,25 +411,6 @@ body .viewport .options-page .cat > button:not(.selected):hover {
     white-space: normal;
 }
 
-.language-option {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.language-option-flag {
-    flex: 0 0 auto;
-    object-fit: cover;
-    image-rendering: pixelated;
-    border-radius: 3px;
-    box-shadow: 0 0 0 1px var(--panel-divider);
-}
-
-.language-option-row button:disabled {
-    cursor: default;
-    opacity: 0.72;
-}
-
 .nexus-key-control {
     display: flex;
     align-items: center;

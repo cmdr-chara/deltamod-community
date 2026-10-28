@@ -13,10 +13,21 @@ function cssText(file) {
     return fs.readFileSync(file,'utf8').replace(/url\(["']?([^\)"']+)["']?\)/g, (full,url) => {
         if (/^(data:|https?:|#)/.test(url)) return full;
         const candidate = path.resolve(path.dirname(file),url);
+        // Serve large bundled fonts on demand instead of duplicating their base64
+        // payload in every page fixture. No live network is used.
+        if (candidate.startsWith(web + path.sep) && candidate.endsWith('.woff2')) {
+            return `url("https://fonts.gstatic.com/deltamod-fixture/${path.relative(web, candidate).split(path.sep).join('/')}")`;
+        }
         return candidate.startsWith(web + path.sep) ? `url("${asset(candidate)}")` : full;
     });
 }
 async function openView(page, view, { count = 3, width = 1100, beforeScript } = {}) {
+    await page.route('https://fonts.gstatic.com/deltamod-fixture/**', async route => {
+        const relative = new URL(route.request().url()).pathname.slice('/deltamod-fixture/'.length);
+        const file = path.resolve(web, relative);
+        if (!file.startsWith(web + path.sep) || !file.endsWith('.woff2') || !fs.existsSync(file)) return route.abort();
+        await route.fulfill({ contentType: 'font/woff2', headers: { 'Access-Control-Allow-Origin': '*' }, body: fs.readFileSync(file) });
+    });
     await page.setViewportSize({ width, height: 800 });
     const html = read('index.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<div\s+id="deltamod-boot-root"[\s\S]*?<\/div>/, '')
@@ -106,6 +117,7 @@ async function openView(page, view, { count = 3, width = 1100, beforeScript } = 
     }, {markup, view});
     if (beforeScript) await beforeScript(page);
     await page.addScriptTag({path:path.join(web,`views/${view}/index.js`)});
+    await page.evaluate(() => document.fonts.ready);
     return page;
 }
 module.exports = {openView, read, web};

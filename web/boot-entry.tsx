@@ -39,9 +39,11 @@ if (host) {
     readyAtVideoTime: undefined as number | undefined,
   };
   let finishRequested = false;
+  let disposed = false;
   let finishTimer: number | null = null;
 
   const render = () => {
+    if (disposed) return;
     if (!state.themeReady) {
       root.render(null);
       return;
@@ -50,7 +52,7 @@ if (host) {
     root.render(
       <DeltamodBootScreen
         progress={state.progress}
-        status={state.status}
+        status={window.Localization?.text(state.status) ?? state.status}
         themeColor={state.themeColor}
         soulColor={state.soulColor}
         backgroundImage={state.backgroundImage}
@@ -68,6 +70,8 @@ if (host) {
           document.body.classList.add("deltamod-ui-entering");
           if (finishTimer !== null) window.clearTimeout(finishTimer);
           finishTimer = window.setTimeout(() => {
+            disposed = true;
+            window.removeEventListener("deltamod-language-change", render);
             root.unmount();
             host.replaceChildren();
             host.hidden = true;
@@ -128,6 +132,8 @@ if (host) {
     },
   };
 
+  window.addEventListener("deltamod-language-change", render);
+  void window.Localization?.ready.then(render);
   window.DeltamodBoot = api;
   host.hidden = false;
   host.removeAttribute("aria-hidden");
