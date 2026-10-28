@@ -21,7 +21,7 @@ test('language changes translate the rendered page without navigation', async ({
             return;
         }
 
-        const match = url.pathname.match(/^\/langs\/([a-z-]+)\/(language\.json|metadata\.txt)$/);
+        const match = url.pathname.match(/^\/langs\/([A-Za-z0-9-]+)\/(language\.json|metadata\.txt)$/);
         if (!match) {
             await route.abort();
             return;

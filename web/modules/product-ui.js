@@ -14,6 +14,20 @@
 })(typeof window !== 'undefined' ? window : globalThis, () => {
     'use strict';
 
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
+
     const CONTRACT_SCHEMA_VERSION = 1;
     const LIVE_ADAPTER_UNAVAILABLE =
         'Installed Mods v2 live data is unavailable because no backend contract commands exist yet.';
@@ -33,6 +47,28 @@
     function safeText(value, fallback = '') {
         if (value === null || value === undefined || value === '') return fallback;
         return String(value);
+    }
+
+    const resolveText = value => typeof value === 'function' ? value() : safeText(value);
+    // These are protocol enums, never provider titles or user-entered names.
+    function uiIdentifier(value, fallback = 'Unknown') {
+        const labels = {
+            install: 'Install', update: 'Update', uninstall: 'Uninstall', verify: 'Verify',
+            repair: 'Repair', recover: 'Recover', profile_switch: 'Profile switch',
+            queued: 'Queued', running: 'Running', cancelling: 'Cancelling', succeeded: 'Succeeded',
+            failed: 'Failed', cancelled: 'Cancelled', recovery_required: 'Recovery required', recovered: 'Recovered',
+            preflight: 'Preflight', downloading: 'Downloading', staging: 'Staging', backing_up: 'Backing up',
+            applying: 'Applying', verifying: 'Verifying', committing: 'Committing', rolling_back: 'Rolling back',
+            cleaning_up: 'Cleaning up', complete: 'Complete', pending: 'Pending', unknown: 'Unknown',
+            no_action: 'No action', retry: 'Retry', reauthenticate: 'Reauthenticate', free_space: 'Free space',
+            resolve_conflict: 'Resolve conflict', select_exact_source: 'Select exact source',
+            confirmed: 'Confirmed', copied: 'Copied', replaced: 'Replaced', removed: 'Removed', restored: 'Restored',
+            different_content: 'Different content', external_modification: 'External modification',
+            unknown_existing_file: 'Unknown existing file', unreadable_entry: 'Unreadable entry',
+            non_regular_entry: 'Not a regular file', aliased_entry: 'Aliased entry', conflict: 'Conflicting file'
+        };
+        const source = labels[safeText(value).toLowerCase()];
+        return source ? uiText(source) : humanizeIdentifier(value, uiText(fallback));
     }
 
     function safeSha256(value) {
@@ -72,7 +108,7 @@
         return Math.min(maximum, Math.max(minimum, number));
     }
 
-    function humanizeIdentifier(value, fallback = 'Unknown') {
+    function humanizeIdentifier(value, fallback = uiText("Unknown")) {
         const text = safeText(value, fallback)
             .replace(/[_-]+/g, ' ')
             .replace(/\s+/g, ' ')
@@ -228,12 +264,12 @@
     function warningForMod(mod, verification, health, conflicts, overlays) {
         const explicit = overlays.warningByInstanceId?.[mod.instanceId];
         if (explicit) return safeText(explicit);
-        if (conflicts.length > 0) return 'Review file conflicts before making changes.';
+        if (conflicts.length > 0) return uiText("Review file conflicts before making changes.");
         if (verification && asArray(verification.issues).length > 0) {
             const count = verification.issues.length;
-            return `${count} verification ${count === 1 ? 'issue needs' : 'issues need'} review.`;
+            return uiText('Verification issues to review: {0}.', uiNumber(count));
         }
-        if (health && health.state !== 'healthy') return 'Game health needs review.';
+        if (health && health.state !== 'healthy') return uiText("Game health needs review.");
         return null;
     }
 
@@ -281,8 +317,9 @@
             id: safeText(candidate.providerId || candidate.id, safeText(fallback.id, 'unknown')),
             displayName: safeText(
                 candidate.displayName,
-                safeText(fallback.displayName, humanizeIdentifier(candidate.providerId || candidate.id, 'Unknown source'))
+                safeText(fallback.displayName, humanizeIdentifier(candidate.providerId || candidate.id, uiText("Unknown source")))
             ),
+            displayNameFallback: !candidate.displayName && (fallback.displayNameFallback || (!fallback.displayName && !candidate.providerId && !candidate.id ? 'Unknown source' : null)),
             versionId: safeText(candidate.versionId || fallback.versionId),
             resourceId: safeText(candidate.resourceId || fallback.resourceId)
         };
@@ -365,7 +402,8 @@
             installationId: safeText(
                 suppliedObject?.installationId || suppliedObject?.installation_id || installed?.installationId || mod.installationId
             ),
-            modName: safeText(suppliedObject?.modName || suppliedObject?.displayName, safeText(mod.name, 'Installed package')),
+            modName: safeText(suppliedObject?.modName || suppliedObject?.displayName, safeText(mod.name, uiText("Installed package"))),
+            modNameFallback: !suppliedObject?.modName && !suppliedObject?.displayName && (mod.nameFallback || !mod.name),
             operationId: safeText(
                 suppliedObject?.operationId || suppliedObject?.operation_id || record?.request?.operationId || journal?.operationId
             ),
@@ -376,8 +414,9 @@
             provider,
             version: safeText(
                 suppliedObject?.version || provider.versionId || intent.version || mod.version,
-                'Unknown'
+                uiText("Unknown")
             ),
+            versionFallback: !suppliedObject?.version && !provider.versionId && !intent.version && (mod.versionFallback || !mod.version),
             archiveSha256: safeSha256(
                 suppliedObject?.archiveSha256 || intent.archiveSha256 || installed?.archiveSha256 || mod.archiveSha256
             ),
@@ -464,8 +503,10 @@
                 folder: safeText(overlays.foldersByInstanceId?.[installed.instanceId]),
                 installationId: safeText(installed.installationId),
                 modId: safeText(installed.modId),
-                name: safeText(installed.displayName, 'Unnamed mod'),
-                version: safeText(installed.version, 'Unknown'),
+                name: safeText(installed.displayName, uiText("Unnamed mod")),
+                nameFallback: !installed.displayName,
+                version: safeText(installed.version, uiText("Unknown")),
+                versionFallback: !installed.version,
                 archiveSha256: safeSha256(installed.archiveSha256),
                 filePlanFingerprint: safeSha256(installed.filePlanFingerprint),
                 artworkUrl: safeArtworkUrl(
@@ -475,8 +516,9 @@
                     id: safeText(providerRef.providerId, 'unknown'),
                     displayName: safeText(
                         providerDescriptor?.displayName,
-                        humanizeIdentifier(providerRef.providerId, 'Unknown source')
+                        humanizeIdentifier(providerRef.providerId, uiText("Unknown source"))
                     ),
+                    displayNameFallback: !providerDescriptor?.displayName && !providerRef.providerId ? 'Unknown source' : null,
                     itemKind: safeText(providerRef.itemKind, 'item'),
                     resourceId: safeText(providerRef.resourceId),
                     artifactId: safeText(providerRef.artifactId),
@@ -514,6 +556,7 @@
                     : { state: 'current', availableVersion: null },
                 conflicts,
                 warning: warningForMod(installed, verification, health, conflicts, overlays),
+                warningOwned: !overlays.warningByInstanceId?.[installed.instanceId],
                 readOnly
             };
         });
@@ -586,7 +629,8 @@
             id,
             displayName: isGameBanana
                 ? 'GameBanana'
-                : safeText(explicit.displayName, 'Source not recorded'),
+                : safeText(explicit.displayName, uiText("Source not recorded")),
+            displayNameFallback: !isGameBanana && !explicit.displayName ? 'Source not recorded' : null,
             itemKind: safeText(explicit.itemKind, 'mod'),
             resourceId: safeText(explicit.resourceId || (isGameBanana ? gameBanana.id : '')),
             artifactId: safeText(explicit.artifactId),
@@ -614,8 +658,10 @@
             folder: safeText(mod.folder),
             installationId: safeText(mod.installationId || mod.game),
             modId: packageId === 'und.und.und' ? '' : packageId,
-            name: safeText(mod.displayName || mod.name, 'Unnamed mod'),
-            version: safeText(mod.version, 'Unknown'),
+            name: safeText(mod.displayName || mod.name, uiText("Unnamed mod")),
+            nameFallback: !mod.displayName && !mod.name,
+            version: safeText(mod.version, uiText("Unknown")),
+            versionFallback: !mod.version,
             archiveSha256: safeSha256(mod.archiveSha256 || mod.sha256),
             filePlanFingerprint: safeSha256(mod.filePlanFingerprint),
             artworkUrl: DEFAULT_ARTWORK,
@@ -632,7 +678,9 @@
             updatedAtMs: optionalTimestamp(mod.updatedAtMs),
             update: { state: 'unknown', availableVersion: null },
             conflicts: [],
-            warning: 'Verification and lifecycle metadata are not available for this legacy record.',
+            warning: uiText("Verification and lifecycle metadata are not available for this legacy record."),
+            warningOwned: true,
+            legacyMetadata: true,
             readOnly: true
         };
     }
@@ -661,8 +709,9 @@
             conflictReports: [],
             healthReports: [],
             diagnostics: null,
+            libraryWarningCount: errors.length,
             libraryWarning: errors.length > 0 && mods.length > 0
-                ? `${errors.length} installed ${errors.length === 1 ? 'record could' : 'records could'} not be read.`
+                ? uiText('Installed records that could not be read: {0}.', uiNumber(errors.length))
                 : null
         };
     }
@@ -714,8 +763,9 @@
                         ? 'ready'
                         : errors.length > 0 ? 'error' : 'empty'
                 });
+                model.libraryWarningCount = errors.length;
                 model.libraryWarning = errors.length > 0
-                    ? `${errors.length} local ${errors.length === 1 ? 'package could' : 'packages could'} not be adopted safely.`
+                    ? uiText('Local packages that could not be adopted safely: {0}.', uiNumber(errors.length))
                     : null;
                 model.catalogErrors = errors;
                 model.startupRecoveryErrors = startupRecoveryErrors;
@@ -740,14 +790,9 @@
 
     function ProviderBadge(provider = {}, options = {}) {
         const doc = getDocument(options);
-        const badge = createElement(
-            doc,
-            'span',
-            'product-badge product-provider-badge',
-            safeText(provider.displayName, humanizeIdentifier(provider.id, 'Unknown source'))
-        );
+        const badge = uiRender(createElement(doc, 'span', 'product-badge product-provider-badge'), () => provider.displayNameFallback ? uiText(provider.displayNameFallback) : safeText(provider.displayName, humanizeIdentifier(provider.id, uiText("Unknown source"))));
         setData(badge, 'provider', safeText(provider.id, 'unknown'));
-        badge.setAttribute('title', `Source: ${badge.textContent}`);
+        uiRender(badge, () => uiText("Source: {0}", badge.textContent), 'title');
         return badge;
     }
 
@@ -767,19 +812,11 @@
             : ['warning', 'unverified', 'unknown'].includes(state)
                 ? 'warning'
                 : 'danger';
-        const badge = createElement(
-            doc,
-            'span',
-            `product-badge product-verification-badge is-${tone}`,
-            labels[state] || humanizeIdentifier(state, 'Verification unknown')
-        );
+        const badge = uiRender(createElement(doc, 'span', `product-badge product-verification-badge is-${tone}`), () => labels[state] ? uiText(labels[state]) : uiText('Verification unknown'));
         setData(badge, 'verification-state', state);
         if (Number.isFinite(Number(verification.checkedFiles))) {
             const checkedFiles = Number(verification.checkedFiles);
-            badge.setAttribute(
-                'title',
-                `${badge.textContent}; ${checkedFiles} ${checkedFiles === 1 ? 'file' : 'files'} checked`
-            );
+            uiRender(badge, () => uiText('{0}; files checked: {1}', badge.textContent, uiNumber(checkedFiles)), 'title');
         }
         return badge;
     }
@@ -804,12 +841,7 @@
                 : ['missing_files', 'conflicting_ownership', 'interrupted_operation'].includes(state)
                     ? 'danger'
                     : 'warning';
-        const badge = createElement(
-            doc,
-            'span',
-            `product-badge product-health-badge is-${tone}`,
-            labels[state] || `Game ${humanizeIdentifier(state).toLowerCase()}`
-        );
+        const badge = uiRender(createElement(doc, 'span', `product-badge product-health-badge is-${tone}`), () => labels[state] ? uiText(labels[state]) : uiText('Game health unknown'));
         setData(badge, 'health-state', state);
         return badge;
     }
@@ -840,19 +872,14 @@
 
         const header = createElement(doc, 'div', 'product-health-summary-heading');
         const headingCopy = createElement(doc, 'div');
-        const title = createElement(doc, 'h2', null, 'Game health');
+        const title = uiRender(createElement(doc, 'h2', null), () => uiText("Game health"));
         title.id = titleId;
         const installationCount = normalizedReports.length;
         headingCopy.append(
             title,
-            createElement(
-                doc,
-                'p',
-                null,
-                installationCount === 1
-                    ? 'Current state for this game installation.'
-                    : `Current state across ${installationCount} game installations.`
-            )
+            uiRender(createElement(doc, 'p', null), () => installationCount === 1
+                    ? uiText("Current state for this game installation.")
+                    : uiText("Current state across {0} game installations.", installationCount))
         );
         header.append(
             headingCopy,
@@ -876,17 +903,17 @@
         const metrics = createElement(doc, 'dl', 'product-health-metrics');
         const metric = (label, value, testId) => {
             const item = createElement(doc, 'div', 'product-health-metric');
-            const term = createElement(doc, 'dt', null, label);
-            const description = createElement(doc, 'dd', null, String(value));
+            const term = uiRender(createElement(doc, 'dt', null), () => resolveText(label));
+            const description = uiRender(createElement(doc, 'dd', null), () => uiNumber(value));
             setData(description, 'testid', testId);
             item.append(term, description);
             return item;
         };
         metrics.append(
-            metric('Installations', installationCount, 'health-installations'),
-            metric('Managed files', totals.managed, 'health-managed-files'),
-            metric('External changes', totals.external, 'health-external-changes'),
-            metric('Interrupted operations', totals.interrupted, 'health-interrupted-operations')
+            metric(() => uiText("Installations"), installationCount, 'health-installations'),
+            metric(() => uiText("Managed files"), totals.managed, 'health-managed-files'),
+            metric(() => uiText("External changes"), totals.external, 'health-external-changes'),
+            metric(() => uiText("Interrupted operations"), totals.interrupted, 'health-interrupted-operations')
         );
 
         section.append(header, metrics);
@@ -895,12 +922,7 @@
     }
 
     function statusBadge(label, state, doc) {
-        const badge = createElement(
-            doc,
-            'span',
-            `product-badge product-status-badge is-${safeText(state, 'neutral')}`,
-            label
-        );
+        const badge = uiRender(createElement(doc, 'span', `product-badge product-status-badge is-${safeText(state, 'neutral')}`), () => resolveText(label));
         setData(badge, 'status', safeText(state, 'neutral'));
         return badge;
     }
@@ -913,14 +935,9 @@
         setData(section, 'state', safeText(progress.state, 'unknown'));
 
         const heading = createElement(doc, 'div', 'product-operation-progress-heading');
-        const title = createElement(
-            doc,
-            'h2',
-            null,
-            options.title || `${humanizeIdentifier(progress.kind, 'Operation')} progress`
-        );
+        const title = uiRender(createElement(doc, 'h2', null), () => resolveText(options.title) || uiText("{0} progress", uiIdentifier(progress.kind, 'Operation')));
         const state = statusBadge(
-            humanizeIdentifier(progress.state, 'Pending'),
+            () => uiIdentifier(progress.state, 'Pending'),
             progress.state === 'succeeded'
                 ? 'success'
                 : progress.state === 'failed'
@@ -933,7 +950,7 @@
         const total = clampNumber(progress.total, 0, Number.MAX_SAFE_INTEGER);
         const completed = clampNumber(progress.completed, 0, total || Number.MAX_SAFE_INTEGER);
         const progressElement = createElement(doc, 'progress', 'product-progress-bar');
-        progressElement.setAttribute('aria-label', safeText(options.progressLabel, 'Operation progress'));
+        uiRender(progressElement, () => safeText(options.progressLabel, uiText("Operation progress")), 'aria-label');
         if (total > 0) {
             progressElement.max = total;
             progressElement.value = completed;
@@ -942,10 +959,10 @@
         }
 
         const detail = createElement(doc, 'div', 'product-operation-progress-detail');
-        const countText = total > 0 ? `${completed} of ${total}` : 'Preparing';
-        const phaseText = humanizeIdentifier(progress.phase, 'Pending');
+        const countText = () => total > 0 ? uiText('{0} of {1}', uiNumber(completed), uiNumber(total)) : uiText('Preparing');
+        const phaseText = () => uiIdentifier(progress.phase, 'Pending');
         detail.append(
-            createElement(doc, 'span', null, `${phaseText} · ${countText}`),
+            uiRender(createElement(doc, 'span', null), () => `${phaseText()} · ${countText()}`),
             createElement(doc, 'span', null, safeText(progress.currentItem))
         );
         if (!progress.currentItem) detail.lastChild.hidden = true;
@@ -953,12 +970,12 @@
         section.append(heading, progressElement, detail);
 
         if (progress.cancellable || options.showCancel) {
-            const cancel = createElement(doc, 'button', 'secondary-action', 'Cancel');
+            const cancel = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Cancel"));
             cancel.type = 'button';
             const canCancel = typeof options.onCancel === 'function';
             cancel.disabled = !canCancel;
             cancel.setAttribute('aria-disabled', String(!canCancel));
-            if (!canCancel) cancel.setAttribute('title', LIFECYCLE_UNAVAILABLE);
+            if (!canCancel) uiRender(cancel, () => uiText(LIFECYCLE_UNAVAILABLE), 'title');
             if (canCancel) cancel.addEventListener('click', () => options.onCancel(progress));
             section.appendChild(cancel);
         }
@@ -982,18 +999,13 @@
             .sort((left, right) => Number(right.updatedAtMs) - Number(left.updatedAtMs))
             .slice(0, 100);
         const header = createElement(doc, 'div', 'product-section-heading');
-        const title = createElement(doc, 'h2', null, 'Recent operations');
+        const title = uiRender(createElement(doc, 'h2', null), () => uiText("Recent operations"));
         title.id = titleId;
-        header.append(title, statusBadge(`${normalized.length} recorded`, 'neutral', doc));
+        header.append(title, statusBadge(() => uiText("{0} recorded", normalized.length), 'neutral', doc));
         section.appendChild(header);
 
         if (normalized.length === 0) {
-            section.appendChild(createElement(
-                doc,
-                'p',
-                'product-section-empty',
-                'No lifecycle operations have been recorded yet.'
-            ));
+            section.appendChild(uiRender(createElement(doc, 'p', 'product-section-empty'), () => uiText("No lifecycle operations have been recorded yet.")));
             return section;
         }
 
@@ -1003,38 +1015,25 @@
             setData(item, 'operation-state', safeText(record.state, 'unknown'));
             const copy = createElement(doc, 'div', 'product-operation-history-copy');
             copy.append(
-                createElement(
-                    doc,
-                    'strong',
-                    null,
-                    humanizeIdentifier(record.request?.intent?.kind, 'Operation')
-                ),
-                createElement(
-                    doc,
-                    'span',
-                    null,
-                    `${humanizeIdentifier(record.phase, 'Pending')} · ${formatDate(record.updatedAtMs, options.locale).label}`
-                )
+                uiRender(createElement(doc, 'strong', null), () => uiIdentifier(record.request?.intent?.kind, 'Operation')),
+                uiRender(createElement(doc, 'span', null), () => `${uiIdentifier(record.phase, 'Pending')} · ${formatDate(record.updatedAtMs, options.locale).label}`)
             );
             item.append(
                 copy,
                 statusBadge(
-                    humanizeIdentifier(record.state, 'Unknown'),
+                    () => uiIdentifier(record.state),
                     operationTone(record.state),
                     doc
                 )
             );
 
             if (record.error) {
-                const recovery = createElement(doc, 'button', 'secondary-action', 'Open recovery');
+                const recovery = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Open recovery"));
                 recovery.type = 'button';
                 const canRecover = typeof options.onRecover === 'function';
                 recovery.disabled = !canRecover;
                 recovery.setAttribute('aria-disabled', String(!canRecover));
-                if (!canRecover) recovery.title = safeText(
-                    options.recoveryUnavailableReason,
-                    LIFECYCLE_UNAVAILABLE
-                );
+                if (!canRecover) uiRender(recovery, () => safeText(options.recoveryUnavailableReason, uiText(LIFECYCLE_UNAVAILABLE)), 'title');
                 if (canRecover) recovery.addEventListener('click', () => options.onRecover(record));
                 item.appendChild(recovery);
             }
@@ -1055,7 +1054,7 @@
             options.startupRecoveryErrors || options.startupErrors
         );
         const header = createElement(doc, 'div', 'product-section-heading');
-        const title = createElement(doc, 'h2', null, 'Recovery');
+        const title = uiRender(createElement(doc, 'h2', null), () => uiText("Recovery"));
         title.id = titleId;
         const unresolved = normalized.filter(journal => journal.phase !== 'complete').length;
         const needsAttention = unresolved > 0 || startupErrors.length > 0;
@@ -1064,9 +1063,9 @@
         header.append(
             title,
             statusBadge(
-                needsAttention
-                    ? `${attentionCount} needs attention`
-                    : 'Ready',
+                () => needsAttention
+                    ? uiText("{0} needs attention", attentionCount)
+                    : uiText("Ready"),
                 needsAttention ? 'danger' : 'success',
                 doc
             )
@@ -1078,23 +1077,18 @@
             setData(startupEntry, 'recovery-state', 'required');
             const startupCopy = createElement(doc, 'div', 'product-recovery-copy');
             startupCopy.append(
-                createElement(doc, 'strong', null, 'Startup recovery needs attention'),
+                uiRender(createElement(doc, 'strong', null), () => uiText("Startup recovery needs attention")),
                 createElement(
                     doc,
                     'span',
                     null,
                     startupErrors.map(error => error.code).join(' · ')
                 ),
-                createElement(
-                    doc,
-                    'p',
-                    'product-recovery-next-step',
-                    'Review the persisted recovery entries below before starting another lifecycle change.'
-                )
+                uiRender(createElement(doc, 'p', 'product-recovery-next-step'), () => uiText("Review the persisted recovery entries below before starting another lifecycle change."))
             );
             startupCopy.lastChild.setAttribute('role', 'alert');
             startupEntry.appendChild(startupCopy);
-            const startupStatus = createElement(doc, 'span', 'product-badge is-danger', 'Blocked');
+            const startupStatus = uiRender(createElement(doc, 'span', 'product-badge is-danger'), () => uiText("Blocked"));
             startupEntry.appendChild(startupStatus);
             section.appendChild(startupEntry);
         }
@@ -1106,7 +1100,7 @@
                 setData(entry, 'recovery-state', 'required');
                 const copy = createElement(doc, 'div', 'product-recovery-copy');
                 copy.append(
-                    createElement(doc, 'strong', null, 'Startup recovery is blocked'),
+                    uiRender(createElement(doc, 'strong', null), () => uiText("Startup recovery is blocked")),
                     createElement(
                         doc,
                         'span',
@@ -1114,36 +1108,26 @@
                         startupErrors.map(error => error.code).join(' · ')
                     )
                 );
-                const reason = createElement(
-                    doc,
-                    'p',
-                    'product-recovery-next-step',
-                    safeText(
+                const reason = uiRender(createElement(doc, 'p', 'product-recovery-next-step'), () => safeText(
                         options.restoreUnavailableReason,
-                        'No persisted recovery generation is available to restore.'
-                    )
-                );
+                        uiText("No persisted recovery generation is available to restore.")
+                    ));
                 const reasonId = nextId('recovery-unavailable');
                 reason.id = reasonId;
                 copy.appendChild(reason);
-                const restore = createElement(doc, 'button', 'secondary-action', 'Restore');
+                const restore = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Restore"));
                 restore.type = 'button';
                 restore.disabled = true;
                 restore.setAttribute('aria-disabled', 'true');
                 restore.setAttribute('aria-describedby', reasonId);
-                restore.setAttribute('aria-label', 'Restore startup recovery (unavailable)');
-                restore.title = reason.textContent;
+                uiRender(restore, () => uiText("Restore startup recovery (unavailable)"), 'aria-label');
+                uiRender(restore, () => reason.textContent, 'title');
                 entry.append(copy, restore);
                 list.appendChild(entry);
                 section.appendChild(list);
                 return section;
             }
-            section.appendChild(createElement(
-                doc,
-                'p',
-                'product-section-empty',
-                'No recovery generation is available.'
-            ));
+            section.appendChild(uiRender(createElement(doc, 'p', 'product-section-empty'), () => uiText("No recovery generation is available.")));
             return section;
         }
 
@@ -1154,45 +1138,24 @@
             const copy = createElement(doc, 'div', 'product-recovery-copy');
             const reasonId = nextId('recovery-entry-description');
             copy.append(
-                createElement(
-                    doc,
-                    'strong',
-                    null,
-                    journal.phase === 'complete' ? 'Last working state' : 'Interrupted operation'
-                ),
-                createElement(
-                    doc,
-                    'span',
-                    null,
-                    `${humanizeIdentifier(journal.operation, 'Operation')} · ${asArray(journal.mutations).length} file changes · ${formatDate(journal.updatedAtMs, options.locale).label}`
-                ),
-                createElement(
-                    doc,
-                    'p',
-                    'product-recovery-next-step',
-                    journal.phase === 'complete'
-                        ? 'Restore this verified generation only after reviewing the preflight facts above.'
-                        : 'Restore the last working state before starting another lifecycle change.'
-                )
+                uiRender(createElement(doc, 'strong', null), () => journal.phase === 'complete' ? uiText("Last working state") : uiText("Interrupted operation")),
+                uiRender(createElement(doc, 'span', null), () => uiText("{0} · {1} file changes · {2}", uiIdentifier(journal.operation, 'Operation'), asArray(journal.mutations).length, formatDate(journal.updatedAtMs, options.locale).label)),
+                uiRender(createElement(doc, 'p', 'product-recovery-next-step'), () => journal.phase === 'complete'
+                        ? uiText("Restore this verified generation only after reviewing the preflight facts above.")
+                        : uiText("Restore the last working state before starting another lifecycle change."))
             );
             copy.lastChild.id = reasonId;
-            const restore = createElement(doc, 'button', 'secondary-action', 'Restore');
+            const restore = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Restore"));
             restore.type = 'button';
             const canRestore = typeof options.onRestore === 'function';
             restore.disabled = !canRestore;
             restore.setAttribute('aria-disabled', String(!canRestore));
-            restore.setAttribute(
-                'aria-label',
-                `Restore ${humanizeIdentifier(journal.operation, 'last working state')}${canRestore ? '' : ' (unavailable)'}`
-            );
+            uiRender(restore, () => uiText(canRestore ? 'Restore {0}' : 'Restore {0} (unavailable)', uiIdentifier(journal.operation, 'Last working state')), 'aria-label');
             restore.setAttribute('aria-describedby', reasonId);
             if (!canRestore) {
-                const unavailableReason = safeText(
-                    options.restoreUnavailableReason,
-                    RESTORE_UNAVAILABLE
-                );
-                copy.lastChild.textContent = unavailableReason;
-                restore.title = unavailableReason;
+                const unavailableReason = () => safeText(options.restoreUnavailableReason, uiText(RESTORE_UNAVAILABLE));
+                uiRender(copy.lastChild, unavailableReason);
+                uiRender(restore, unavailableReason, 'title');
             }
             if (canRestore) restore.addEventListener('click', () => options.onRestore(journal));
             entry.append(copy, restore);
@@ -1252,17 +1215,20 @@
         const titleId = nextId('diagnostics-title');
         section.setAttribute('aria-labelledby', titleId);
         const header = createElement(doc, 'div', 'product-section-heading');
-        const title = createElement(doc, 'h2', null, 'Support diagnostics');
+        const title = uiRender(createElement(doc, 'h2', null), () => uiText("Support diagnostics"));
         title.id = titleId;
         header.appendChild(title);
 
         const summary = createElement(doc, 'p', 'product-diagnostics-summary');
-        summary.textContent = `${clampNumber(diagnostics.lifecycle?.installedMods, 0, Number.MAX_SAFE_INTEGER)} mods · ${clampNumber(diagnostics.lifecycle?.recordedOperations, 0, Number.MAX_SAFE_INTEGER)} operations · ${clampNumber(diagnostics.lifecycle?.recoveryGenerations, 0, Number.MAX_SAFE_INTEGER)} recovery generations`;
         const startupErrors = asArray(diagnostics.lifecycle?.startupRecoveryErrors);
-        if (startupErrors.length > 0) {
-            summary.textContent += ` · ${startupErrors.length} startup recovery ${startupErrors.length === 1 ? 'error' : 'errors'}`;
-        }
-        const copy = createElement(doc, 'button', 'secondary-action', 'Copy diagnostics');
+        uiRender(summary, () => [
+            uiText('{0} mods · {1} operations · {2} recovery generations',
+                uiNumber(clampNumber(diagnostics.lifecycle?.installedMods, 0, Number.MAX_SAFE_INTEGER)),
+                uiNumber(clampNumber(diagnostics.lifecycle?.recordedOperations, 0, Number.MAX_SAFE_INTEGER)),
+                uiNumber(clampNumber(diagnostics.lifecycle?.recoveryGenerations, 0, Number.MAX_SAFE_INTEGER))),
+            startupErrors.length ? uiText('Startup recovery errors: {0}', uiNumber(startupErrors.length)) : ''
+        ].filter(Boolean).join(' · '));
+        const copy = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Copy diagnostics"));
         copy.type = 'button';
         const copyStatus = createElement(doc, 'span', 'product-copy-status');
         copyStatus.setAttribute('role', 'status');
@@ -1270,16 +1236,16 @@
         const canCopy = typeof options.onCopy === 'function';
         copy.disabled = !canCopy;
         copy.setAttribute('aria-disabled', String(!canCopy));
-        if (!canCopy) copy.title = 'Available when the desktop clipboard bridge is connected.';
+        if (!canCopy) uiRender(copy, () => uiText("Available when the desktop clipboard bridge is connected."), "title");
         if (canCopy) {
             copy.addEventListener('click', () => {
-                copyStatus.textContent = 'Copying…';
+                uiRender(copyStatus, () => uiText("Copying…"));
                 Promise.resolve(options.onCopy(JSON.stringify(diagnostics, null, 2)))
                     .then(() => {
-                        copyStatus.textContent = 'Copied.';
+                        uiRender(copyStatus, () => uiText("Copied."));
                     })
                     .catch(() => {
-                        copyStatus.textContent = 'Clipboard unavailable.';
+                        uiRender(copyStatus, () => uiText("Clipboard unavailable."));
                     });
             });
         }
@@ -1289,15 +1255,15 @@
 
     function preflightActionLabel(action) {
         const labels = {
-            create: 'Create',
-            replace: 'Replace',
-            co_own_identical: 'Keep shared copy',
-            delete: 'Delete',
-            keep_for_other_owners: 'Keep for another owner',
-            already_missing: 'Already missing',
-            unchanged: 'Unchanged'
+            create: uiText("Create"),
+            replace: uiText("Replace"),
+            co_own_identical: uiText("Keep shared copy"),
+            delete: uiText("Delete"),
+            keep_for_other_owners: uiText("Keep for another owner"),
+            already_missing: uiText("Already missing"),
+            unchanged: uiText("Unchanged")
         };
-        return labels[safeText(action).toLowerCase()] || humanizeIdentifier(action, 'Review');
+        return labels[safeText(action).toLowerCase()] || humanizeIdentifier(action, uiText("Review"));
     }
 
     function PreflightReview(review = {}, options = {}) {
@@ -1311,101 +1277,71 @@
         setData(section, 'review-kind', safeText(review.kind, 'review'));
 
         const heading = createElement(doc, 'div', 'product-section-heading');
-        const title = createElement(doc, 'h2', null, 'Preflight review');
+        const title = uiRender(createElement(doc, 'h2', null), () => uiText("Preflight review"));
         title.id = titleId;
         const state = review.conflicts?.length > 0 || review.externalChanges > 0
             ? 'blocked'
             : 'recorded';
         heading.append(
             title,
-            statusBadge(state === 'blocked' ? 'Review required' : 'Contract evidence', state === 'blocked' ? 'danger' : 'neutral', doc)
+            statusBadge(() => state === 'blocked' ? uiText("Review required") : uiText("Contract evidence"), state === 'blocked' ? 'danger' : 'neutral', doc)
         );
 
-        const description = createElement(
-            doc,
-            'p',
-            'product-preflight-description',
-            review.source === 'preflight-contract'
-                ? 'Review the backend-provided plan before making an enabled lifecycle change.'
-                : 'Reviewable facts from the installed, operation, and recovery contracts. A new backend preflight is still authoritative at mutation time.'
-        );
+        const description = uiRender(createElement(doc, 'p', 'product-preflight-description'), () => review.source === 'preflight-contract'
+                ? uiText("Review the backend-provided plan before making an enabled lifecycle change.")
+                : uiText("Reviewable facts from the installed, operation, and recovery contracts. A new backend preflight is still authoritative at mutation time."));
         description.id = descriptionId;
 
         const summary = createElement(doc, 'dl', 'product-preflight-summary');
         const addSummary = (label, value, testId) => {
             const item = createElement(doc, 'div', 'product-preflight-summary-item');
-            const term = createElement(doc, 'dt', null, label);
-            const valueNode = createElement(doc, 'dd', null, value);
+            const term = uiRender(createElement(doc, 'dt', null), () => resolveText(label));
+            const valueNode = uiRender(createElement(doc, 'dd', null), () => resolveText(value));
             if (testId) setData(valueNode, 'testid', testId);
             item.append(term, valueNode);
             summary.appendChild(item);
         };
-        addSummary('Package', safeText(review.modName, 'Installed package'));
-        addSummary('Operation', humanizeIdentifier(review.kind, 'Review'));
-        addSummary('Provider', safeText(review.provider?.displayName, 'Unknown source'));
-        addSummary('Version', safeText(review.version, 'Unknown'));
-        addSummary('Files', `${review.fileCount} ${review.fileCount === 1 ? 'file' : 'files'}`, 'preflight-file-count');
-        addSummary('Backups', `${review.backupFiles} ${review.backupFiles === 1 ? 'file' : 'files'}`, 'preflight-backup-count');
+        addSummary(() => uiText("Package"), () => review.modNameFallback ? uiText('Installed package') : safeText(review.modName, uiText("Installed package")));
+        addSummary(() => uiText("Operation"), () => uiIdentifier(review.kind, 'Review'));
+        addSummary(() => uiText("Provider"), () => review.provider?.displayNameFallback ? uiText(review.provider.displayNameFallback) : safeText(review.provider?.displayName, uiText("Unknown source")));
+        addSummary(() => uiText("Version"), () => review.versionFallback ? uiText('Unknown') : safeText(review.version, uiText("Unknown")));
+        addSummary(() => uiText("Files"), () => uiNumber(review.fileCount), 'preflight-file-count');
+        addSummary(() => uiText("Backups"), () => uiNumber(review.backupFiles), 'preflight-backup-count');
         if (review.externalChanges > 0) {
-            addSummary('External changes', String(review.externalChanges), 'preflight-external-changes');
+            addSummary(() => uiText("External changes"), () => String(review.externalChanges), 'preflight-external-changes');
         }
 
         const identifiers = createElement(doc, 'p', 'product-preflight-identifiers');
-        const identifierParts = [];
-        if (review.archiveSha256) identifierParts.push(`Archive SHA-256 ${shortenedHash(review.archiveSha256)}`);
-        if (review.filePlanFingerprint) identifierParts.push(`File plan ${shortenedHash(review.filePlanFingerprint)}`);
-        if (review.operationId) identifierParts.push(`Operation ${review.operationId}`);
-        identifiers.textContent = identifierParts.length > 0
-            ? identifierParts.join(' · ')
-            : 'Exact archive, file plan, and operation identity are not recorded.';
+        uiRender(identifiers, () => {
+            const parts = [];
+            if (review.archiveSha256) parts.push(uiText('Archive SHA-256 {0}', shortenedHash(review.archiveSha256)));
+            if (review.filePlanFingerprint) parts.push(uiText('File plan {0}', shortenedHash(review.filePlanFingerprint)));
+            if (review.operationId) parts.push(uiText('Operation {0}', review.operationId));
+            return parts.length ? parts.join(' · ') : uiText('Exact archive, file plan, and operation identity are not recorded.');
+        });
 
         const files = createElement(doc, 'ul', 'product-preflight-files');
         review.files.slice(0, 100).forEach(file => {
             const item = createElement(doc, 'li', 'product-preflight-file');
             const path = createElement(doc, 'code', 'product-preflight-path', file.path);
-            const detail = createElement(
-                doc,
-                'span',
-                'product-preflight-file-detail',
-                `${preflightActionLabel(file.action)}${file.backupRequired ? ' · backup required' : ''}`
-            );
+            const detail = uiRender(createElement(doc, 'span', 'product-preflight-file-detail'), () => [preflightActionLabel(file.action), file.backupRequired ? uiText('Backup required') : ''].filter(Boolean).join(' · '));
             item.append(path, detail);
             if (file.existingOwners.length > 0) {
-                item.appendChild(createElement(
-                    doc,
-                    'span',
-                    'product-preflight-owners',
-                    `Owners: ${file.existingOwners.join(', ')}`
-                ));
+                item.appendChild(uiRender(createElement(doc, 'span', 'product-preflight-owners'), () => uiText("Owners: {0}", file.existingOwners.join(', '))));
             }
             files.appendChild(item);
         });
         if (review.files.length === 0) {
-            files.appendChild(createElement(
-                doc,
-                'li',
-                'product-section-empty',
-                'No affected files are recorded in the available contracts.'
-            ));
+            files.appendChild(uiRender(createElement(doc, 'li', 'product-section-empty'), () => uiText("No affected files are recorded in the available contracts.")));
         }
 
         section.append(heading, description, summary, identifiers, files);
         if (review.conflicts.length > 0) {
-            const conflicts = createElement(
-                doc,
-                'p',
-                'product-preflight-warning',
-                `${review.conflicts.length} file ${review.conflicts.length === 1 ? 'conflict is' : 'conflicts are'} recorded; resolve conflicts before making changes.`
-            );
+            const conflicts = uiRender(createElement(doc, 'p', 'product-preflight-warning'), () => uiText('Recorded file conflicts: {0}. Resolve conflicts before making changes.', uiNumber(review.conflicts.length)));
             conflicts.setAttribute('role', 'alert');
             section.appendChild(conflicts);
         } else if (review.externalChanges > 0) {
-            const external = createElement(
-                doc,
-                'p',
-                'product-preflight-warning',
-                `${review.externalChanges} external ${review.externalChanges === 1 ? 'change is' : 'changes are'} recorded; lifecycle actions must re-check the installation.`
-            );
+            const external = uiRender(createElement(doc, 'p', 'product-preflight-warning'), () => uiText('Recorded external changes: {0}. Lifecycle actions must re-check the installation.', uiNumber(review.externalChanges)));
             external.setAttribute('role', 'alert');
             section.appendChild(external);
         }
@@ -1421,25 +1357,24 @@
         const marker = createElement(doc, 'span', 'product-state-marker', options.marker || '◆');
         marker.setAttribute('aria-hidden', 'true');
         const copy = createElement(doc, 'div', 'product-state-copy');
-        const heading = createElement(doc, 'h2', null, options.title);
-        const message = createElement(doc, 'p', null, options.message);
+        const heading = uiRender(createElement(doc, 'h2', null), () => resolveText(options.title));
+        const message = uiRender(createElement(doc, 'p', null), () => resolveText(options.message));
         copy.append(heading, message);
 
         const actions = asArray(options.actions).filter(Boolean);
         if (actions.length > 0) {
             const actionRow = createElement(doc, 'div', 'product-state-actions');
             actions.forEach(action => {
-                const button = createElement(
+                const button = uiRender(createElement(
                     doc,
                     'button',
-                    action.secondary ? 'secondary-action' : '',
-                    action.label
-                );
+                    action.secondary ? 'secondary-action' : ''
+                ), () => resolveText(action.label));
                 button.type = 'button';
                 button.disabled = Boolean(action.disabled) || typeof action.onActivate !== 'function';
                 button.setAttribute('aria-disabled', String(button.disabled));
                 if (button.disabled && action.unavailableReason) {
-                    button.setAttribute('title', safeText(action.unavailableReason));
+                    uiRender(button, () => resolveText(action.unavailableReason), 'title');
                 }
                 if (!button.disabled) {
                     button.addEventListener('click', event => action.onActivate(event));
@@ -1455,10 +1390,10 @@
 
     function EmptyState(options = {}) {
         return StatePanel('empty', {
-            title: safeText(options.title, 'No installed mods yet'),
-            message: safeText(
-                options.message,
-                'Installed packages will appear here when lifecycle support is available.'
+            title: () => safeText(resolveText(options.title), uiText("No installed mods yet")),
+            message: () => safeText(
+                resolveText(options.message),
+                uiText("Installed packages will appear here when lifecycle support is available.")
             ),
             marker: options.marker || '◇',
             actions: options.actions,
@@ -1468,8 +1403,8 @@
 
     function ErrorState(options = {}) {
         return StatePanel('error', {
-            title: safeText(options.title, 'Unable to load installed mods'),
-            message: safeText(options.message, 'Try again when the data source is available.'),
+            title: () => safeText(resolveText(options.title), uiText("Unable to load installed mods")),
+            message: () => safeText(resolveText(options.message), uiText("Try again when the data source is available.")),
             marker: options.marker || '!',
             actions: options.actions,
             document: options.document
@@ -1481,13 +1416,13 @@
         const first = normalized[0] || {};
         const code = safeText(first.code, 'startup_recovery_failed');
         const operationId = safeText(first.operationId);
-        const message = code === 'PATCH_STARTUP_RECOVERY_BLOCKED'
-            ? 'A startup patch recovery is blocked. Review the persisted operation and recovery state before making changes.'
-            : 'A startup lifecycle recovery could not be completed. Review the persisted recovery state before making changes.';
-        const detail = operationId ? ` Operation ${operationId} remains recorded for investigation.` : '';
+        const message = () => code === 'PATCH_STARTUP_RECOVERY_BLOCKED'
+            ? uiText("A startup patch recovery is blocked. Review the persisted operation and recovery state before making changes.")
+            : uiText("A startup lifecycle recovery could not be completed. Review the persisted recovery state before making changes.");
+        const detail = () => operationId ? uiText('Operation {0} remains recorded for investigation.', operationId) : '';
         const panel = StatePanel('recovery-error', {
-            title: safeText(options.title, 'Startup recovery needs attention'),
-            message: `${message}${detail}`,
+            title: () => safeText(resolveText(options.title), uiText("Startup recovery needs attention")),
+            message: () => [message(), detail()].filter(Boolean).join(' '),
             marker: options.marker || '!',
             actions: options.actions,
             document: options.document
@@ -1498,10 +1433,10 @@
 
     function OfflineState(options = {}) {
         return StatePanel('offline', {
-            title: safeText(options.title, 'You are offline'),
-            message: safeText(
-                options.message,
-                'Installed records remain available, but provider details may be out of date.'
+            title: () => safeText(resolveText(options.title), uiText("You are offline")),
+            message: () => safeText(
+                resolveText(options.message),
+                uiText("Installed records remain available, but provider details may be out of date.")
             ),
             marker: options.marker || '○',
             actions: options.actions,
@@ -1514,15 +1449,10 @@
         const section = createElement(doc, 'section', 'product-skeleton');
         section.setAttribute('role', 'status');
         section.setAttribute('aria-busy', 'true');
-        section.setAttribute('aria-label', safeText(options.label, 'Loading installed mods'));
+        uiRender(section, () => safeText(resolveText(options.label), uiText("Loading installed mods")), 'aria-label');
         setData(section, 'state', 'loading');
 
-        const announcement = createElement(
-            doc,
-            'span',
-            'product-visually-hidden',
-            safeText(options.label, 'Loading installed mods')
-        );
+        const announcement = uiRender(createElement(doc, 'span', 'product-visually-hidden'), () => safeText(resolveText(options.label), uiText("Loading installed mods")));
         section.appendChild(announcement);
         const rows = clampNumber(options.rows || 2, 1, 6);
         for (let index = 0; index < rows; index += 1) {
@@ -1629,14 +1559,9 @@
         dialog.setAttribute('aria-labelledby', titleId);
         dialog.setAttribute('aria-describedby', descriptionId);
 
-        const heading = createElement(
-            doc,
-            'h2',
-            null,
-            safeText(options.title, 'Confirm action')
-        );
+        const heading = uiRender(createElement(doc, 'h2', null), () => safeText(resolveText(options.title), uiText("Confirm action")));
         heading.id = titleId;
-        const description = createElement(doc, 'p', null, safeText(options.message));
+        const description = uiRender(createElement(doc, 'p', null), () => resolveText(options.message));
         description.id = descriptionId;
         dialog.append(heading, description);
 
@@ -1645,12 +1570,7 @@
             const inputId = nextId('product-confirmation-input');
             const field = createElement(doc, 'label', 'product-confirmation-field');
             field.setAttribute('for', inputId);
-            field.appendChild(createElement(
-                doc,
-                'span',
-                null,
-                `Type ${safeText(options.requiredText)} to continue`
-            ));
+            field.appendChild(uiRender(createElement(doc, 'span', null), () => uiText("Type {0} to continue", safeText(options.requiredText))));
             confirmationInput = createElement(doc, 'input');
             confirmationInput.id = inputId;
             confirmationInput.type = 'text';
@@ -1660,19 +1580,9 @@
         }
 
         const actions = createElement(doc, 'div', 'product-dialog-actions');
-        const cancelButton = createElement(
-            doc,
-            'button',
-            'secondary-action',
-            safeText(options.cancelLabel, 'Cancel')
-        );
+        const cancelButton = uiRender(createElement(doc, 'button', 'secondary-action'), () => safeText(resolveText(options.cancelLabel), uiText("Cancel")));
         cancelButton.type = 'button';
-        const confirmButton = createElement(
-            doc,
-            'button',
-            options.danger ? 'product-button-danger' : '',
-            safeText(options.confirmLabel, 'Continue')
-        );
+        const confirmButton = uiRender(createElement(doc, 'button', options.danger ? 'product-button-danger' : ''), () => safeText(resolveText(options.confirmLabel), uiText("Continue")));
         confirmButton.type = 'button';
         if (confirmationInput) confirmButton.disabled = true;
         actions.append(cancelButton, confirmButton);
@@ -1716,8 +1626,8 @@
         return Confirmation({
             ...options,
             danger: true,
-            title: safeText(options.title, 'Confirm destructive action'),
-            confirmLabel: safeText(options.confirmLabel, 'Confirm')
+            title: () => safeText(resolveText(options.title), uiText("Confirm destructive action")),
+            confirmLabel: () => safeText(resolveText(options.confirmLabel), uiText("Confirm"))
         });
     }
 
@@ -1735,51 +1645,31 @@
         dialog.setAttribute('aria-describedby', descriptionId);
 
         const conflicts = asArray(report.conflicts);
-        const title = createElement(doc, 'h2', null, safeText(options.title, 'File conflicts'));
+        const title = uiRender(createElement(doc, 'h2', null), () => safeText(resolveText(options.title), uiText("File conflicts")));
         title.id = titleId;
-        const description = createElement(
-            doc,
-            'p',
-            null,
-            safeText(
-                options.message,
-                `${conflicts.length} ${conflicts.length === 1 ? 'file needs' : 'files need'} review before changes can continue.`
-            )
-        );
+        const description = uiRender(createElement(doc, 'p', null), () => safeText(
+                resolveText(options.message),
+                uiText('Files to review before changes can continue: {0}.', uiNumber(conflicts.length))
+            ));
         description.id = descriptionId;
         const list = createElement(doc, 'ul', 'product-conflict-list');
 
         conflicts.forEach(conflict => {
             const item = createElement(doc, 'li', 'product-conflict-item');
             const path = createElement(doc, 'code', 'product-conflict-path', conflict.path);
-            const reason = createElement(
-                doc,
-                'span',
-                'product-conflict-reason',
-                humanizeIdentifier(conflict.reason, 'Conflicting file')
-            );
+            const reason = uiRender(createElement(doc, 'span', 'product-conflict-reason'), () => uiIdentifier(conflict.reason, 'Conflicting file'));
             const owners = asArray(conflict.existingOwners).map(owner => safeText(owner)).join(', ');
-            const owner = createElement(
-                doc,
-                'span',
-                'product-conflict-owner',
-                owners ? `Currently owned by ${owners}` : 'Existing owner unavailable'
-            );
+            const owner = uiRender(createElement(doc, 'span', 'product-conflict-owner'), () => owners ? uiText("Currently owned by {0}", owners) : uiText("Existing owner unavailable"));
             item.append(path, reason, owner);
 
             if (conflict.actualSha256 || conflict.proposedSha256) {
-                item.appendChild(createElement(
-                    doc,
-                    'span',
-                    'product-conflict-hashes',
-                    `Current ${shortenedHash(conflict.actualSha256)} · Proposed ${shortenedHash(conflict.proposedSha256)}`
-                ));
+                item.appendChild(uiRender(createElement(doc, 'span', 'product-conflict-hashes'), () => uiText("Current {0} · Proposed {1}", shortenedHash(conflict.actualSha256), shortenedHash(conflict.proposedSha256))));
             }
             list.appendChild(item);
         });
 
         const actions = createElement(doc, 'div', 'product-dialog-actions');
-        const closeButton = createElement(doc, 'button', 'secondary-action', 'Close');
+        const closeButton = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Close"));
         closeButton.type = 'button';
         actions.appendChild(closeButton);
         dialog.append(title, description, list, actions);
@@ -1798,12 +1688,12 @@
         toast.setAttribute('role', ['danger', 'error'].includes(tone) ? 'alert' : 'status');
         const copy = createElement(doc, 'div', 'product-toast-copy');
         copy.append(
-            createElement(doc, 'strong', null, safeText(options.title, 'Notification')),
-            createElement(doc, 'p', null, safeText(options.message))
+            uiRender(createElement(doc, 'strong', null), () => safeText(resolveText(options.title), uiText("Notification"))),
+            uiRender(createElement(doc, 'p', null), () => resolveText(options.message))
         );
-        const closeButton = createElement(doc, 'button', 'product-toast-close', 'Close');
+        const closeButton = uiRender(createElement(doc, 'button', 'product-toast-close'), () => uiText("Close"));
         closeButton.type = 'button';
-        closeButton.setAttribute('aria-label', 'Dismiss notification');
+        uiRender(closeButton, () => uiText("Dismiss notification"), 'aria-label');
         const dismiss = () => {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
             if (typeof options.onDismiss === 'function') options.onDismiss();
@@ -1816,7 +1706,7 @@
     function NotificationCenter(options = {}) {
         const doc = getDocument(options);
         const center = createElement(doc, 'section', 'product-notification-center');
-        center.setAttribute('aria-label', safeText(options.label, 'Notifications'));
+        uiRender(center, () => safeText(resolveText(options.label), uiText("Notifications")), 'aria-label');
         center.setAttribute('aria-live', 'polite');
         const notify = notification => {
             const toast = Toast({ ...notification, document: doc });
@@ -1829,13 +1719,13 @@
 
     function formatDate(timestamp, locale) {
         if (timestamp === null || timestamp === undefined || timestamp === '') {
-            return { label: 'Unknown', iso: '' };
+            return { label: uiText("Unknown"), iso: '' };
         }
         const date = new Date(Number(timestamp));
-        if (!Number.isFinite(date.getTime())) return { label: 'Unknown', iso: '' };
+        if (!Number.isFinite(date.getTime())) return { label: uiText("Unknown"), iso: '' };
         try {
             return {
-                label: new Intl.DateTimeFormat(locale || 'en', {
+                label: new Intl.DateTimeFormat(uiHost.Localization?.getLocale?.() || locale || 'en', {
                     year: 'numeric',
                     month: 'short',
                     day: 'numeric'
@@ -1850,8 +1740,8 @@
     function detailItem(doc, label, value, valueNode = null) {
         const wrapper = createElement(doc, 'div', 'product-mod-detail');
         wrapper.append(
-            createElement(doc, 'dt', null, label),
-            valueNode || createElement(doc, 'dd', null, value)
+            uiRender(createElement(doc, 'dt', null), () => resolveText(label)),
+            valueNode || uiRender(createElement(doc, 'dd', null), () => resolveText(value))
         );
         return wrapper;
     }
@@ -1859,16 +1749,11 @@
     function sourceLink(provider, doc) {
         const url = safeExternalUrl(provider.canonicalUrl);
         if (!url) {
-            const unavailable = createElement(
-                doc,
-                'span',
-                'product-source-unavailable',
-                'Source unavailable'
-            );
+            const unavailable = uiRender(createElement(doc, 'span', 'product-source-unavailable'), () => uiText("Source unavailable"));
             setData(unavailable, 'testid', 'mod-source-link');
             return unavailable;
         }
-        const link = createElement(doc, 'a', 'product-source-link', 'View source');
+        const link = uiRender(createElement(doc, 'a', 'product-source-link'), () => uiText("View source"));
         link.href = url;
         link.setAttribute('href', url);
         link.target = '_blank';
@@ -1888,18 +1773,15 @@
         onActivate,
         unavailableReason = LIFECYCLE_UNAVAILABLE
     ) {
-        const button = createElement(doc, 'button', 'secondary-action product-lifecycle-action', label);
+        const button = uiRender(createElement(doc, 'button', 'secondary-action product-lifecycle-action'), () => uiText(label));
         button.type = 'button';
         const available = typeof onActivate === 'function';
         button.disabled = !available;
         button.setAttribute('aria-disabled', String(!available));
-        button.setAttribute(
-            'aria-label',
-            `${label} ${safeText(modName)}${available ? '' : ' (unavailable)'}`
-        );
+        uiRender(button, () => uiText(available ? '{0}: {1}' : '{0}: {1} (unavailable)', uiText(label), resolveText(modName)), 'aria-label');
         if (!available) {
             button.setAttribute('aria-describedby', describedBy);
-            button.setAttribute('title', unavailableReason);
+            uiRender(button, () => [LIFECYCLE_UNAVAILABLE, PREFLIGHT_UNAVAILABLE, RESTORE_UNAVAILABLE].includes(unavailableReason) ? uiText(unavailableReason) : resolveText(unavailableReason), 'title');
         } else {
             button.addEventListener('click', () => onActivate());
         }
@@ -1931,8 +1813,9 @@
         }, { once: true });
 
         const identity = createElement(doc, 'div', 'product-mod-identity');
-        const eyebrow = createElement(doc, 'span', 'product-mod-eyebrow', 'Installed package');
-        const name = createElement(doc, 'h2', 'product-mod-name', safeText(mod.name, 'Unnamed mod'));
+        const eyebrow = uiRender(createElement(doc, 'span', 'product-mod-eyebrow'), () => uiText("Installed package"));
+        const displayName = () => mod.nameFallback ? uiText('Unnamed mod') : safeText(mod.name, uiText('Unnamed mod'));
+        const name = uiRender(createElement(doc, 'h2', 'product-mod-name'), displayName);
         name.id = titleId;
         const badges = createElement(doc, 'div', 'product-mod-badges');
         badges.append(
@@ -1942,14 +1825,14 @@
         );
         if (mod.update?.state === 'available') {
             badges.appendChild(statusBadge(
-                `${safeText(mod.update.availableVersion, 'New version')} available`,
+                () => uiText("{0} available", safeText(mod.update.availableVersion, uiText('New version'))),
                 'update',
                 doc
             ));
         } else if (mod.update?.state === 'current') {
-            badges.appendChild(statusBadge('Up to date', 'neutral', doc));
+            badges.appendChild(statusBadge(() => uiText("Up to date"), 'neutral', doc));
         } else {
-            badges.appendChild(statusBadge('Update status unknown', 'neutral', doc));
+            badges.appendChild(statusBadge(() => uiText("Update status unknown"), 'neutral', doc));
         }
         identity.append(eyebrow, name, badges);
         header.append(artwork, identity);
@@ -1957,30 +1840,31 @@
         const details = createElement(doc, 'dl', 'product-mod-details');
         const installedDate = formatDate(mod.installedAtMs, options.locale);
         const dateValue = createElement(doc, 'dd');
-        const time = createElement(doc, 'time', null, installedDate.label);
+        const time = uiRender(createElement(doc, 'time', null), () => formatDate(mod.installedAtMs, options.locale).label);
         if (installedDate.iso) time.setAttribute('datetime', installedDate.iso);
         dateValue.appendChild(time);
-        const providerLabel = mod.provider?.resourceId
-            ? `${safeText(mod.provider.displayName)} #${safeText(mod.provider.resourceId)}`
-            : safeText(mod.provider?.displayName, 'Unknown source');
+        const providerLabel = () => {
+            const label = mod.provider?.displayNameFallback ? uiText(mod.provider.displayNameFallback) : safeText(mod.provider?.displayName, uiText('Unknown source'));
+            return mod.provider?.resourceId ? `${label} #${safeText(mod.provider.resourceId)}` : label;
+        };
         const hasFileCount = Number.isInteger(mod.fileCount) && mod.fileCount >= 0;
         const fileCount = hasFileCount
             ? clampNumber(mod.fileCount, 0, Number.MAX_SAFE_INTEGER)
             : null;
         const checksum = safeSha256(mod.archiveSha256);
         details.append(
-            detailItem(doc, 'Version', safeText(mod.version, 'Unknown')),
-            detailItem(doc, 'Source', providerLabel),
+            detailItem(doc, () => uiText("Version"), () => mod.versionFallback ? uiText('Unknown') : safeText(mod.version, uiText("Unknown"))),
+            detailItem(doc, () => uiText("Source"), providerLabel),
             detailItem(
                 doc,
-                'Files',
-                fileCount === null
-                    ? 'Not recorded'
-                    : `${fileCount} ${fileCount === 1 ? 'file' : 'files'}`
+                () => uiText("Files"),
+                () => fileCount === null
+                    ? uiText("Not recorded")
+                    : uiNumber(fileCount)
             ),
-            detailItem(doc, 'Archive SHA-256', checksum || 'Not recorded'),
-            detailItem(doc, 'Installed', null, dateValue),
-            detailItem(doc, 'Provider page', null, (() => {
+            detailItem(doc, () => uiText("Archive SHA-256"), () => checksum || uiText("Not recorded")),
+            detailItem(doc, () => uiText("Installed"), null, dateValue),
+            detailItem(doc, () => uiText("Provider page"), null, (() => {
                 const value = createElement(doc, 'dd');
                 value.appendChild(sourceLink(mod.provider || {}, doc));
                 return value;
@@ -1991,11 +1875,15 @@
         if (mod.update?.state === 'available') {
             const update = createElement(doc, 'p', 'product-mod-state is-update');
             setData(update, 'state', 'update');
-            update.textContent = `Update ${safeText(mod.update.availableVersion)} is available.`;
+            uiRender(update, () => uiText("Update {0} is available.", safeText(mod.update.availableVersion)));
             states.appendChild(update);
         }
         if (mod.warning) {
-            const warning = createElement(doc, 'p', 'product-mod-state is-warning', mod.warning);
+            const warning = uiRender(createElement(doc, 'p', 'product-mod-state is-warning'), () => {
+                if (!mod.warningOwned) return mod.warning;
+                if (mod.legacyMetadata) return uiText('Verification and lifecycle metadata are not available for this legacy record.');
+                return warningForMod({ instanceId: mod.id }, mod.verification, mod.health, asArray(mod.conflicts), {});
+            });
             warning.setAttribute('role', 'status');
             setData(warning, 'state', 'warning');
             states.appendChild(warning);
@@ -2005,17 +1893,12 @@
             const conflictRow = createElement(doc, 'div', 'product-mod-state is-conflict');
             setData(conflictRow, 'state', 'conflict');
             const count = mod.conflicts.length;
-            conflictRow.appendChild(createElement(
-                doc,
-                'p',
-                null,
-                `${count} file ${count === 1 ? 'conflict needs' : 'conflicts need'} review.`
-            ));
+            conflictRow.appendChild(uiRender(createElement(doc, 'p', null), () => uiText('File conflicts to review: {0}.', uiNumber(count))));
             const dialog = ConflictDialog(
                 { conflicts: mod.conflicts, installationId: mod.installationId },
                 { document: doc }
             );
-            const review = createElement(doc, 'button', 'secondary-action', 'Review conflicts');
+            const review = uiRender(createElement(doc, 'button', 'secondary-action'), () => uiText("Review conflicts"));
             review.type = 'button';
             setData(review, 'testid', 'review-conflicts');
             review.addEventListener('click', () => dialog.open(review));
@@ -2023,14 +1906,9 @@
             states.append(conflictRow, dialog.element);
         }
 
-        const unavailable = createElement(
-            doc,
-            'p',
-            'product-action-unavailable',
-            options.preflightReview
-                ? 'Lifecycle actions repeat authoritative preflight checks before changing files.'
-                : PREFLIGHT_UNAVAILABLE
-        );
+        const unavailable = uiRender(createElement(doc, 'p', 'product-action-unavailable'), () => options.preflightReview
+                ? uiText("Lifecycle actions repeat authoritative preflight checks before changing files.")
+                : uiText(PREFLIGHT_UNAVAILABLE));
         unavailable.id = unavailableId;
         const actions = createElement(doc, 'div', 'product-mod-actions');
         const openFolder = mod.folder && typeof options.onOpenFolder === 'function'
@@ -2047,7 +1925,7 @@
                 doc,
                 'update',
                 'Update',
-                mod.name,
+                displayName,
                 unavailableId,
                 mutationAction(
                     mod.installationId === 'local-packet-library' ? options.onUpdate : null
@@ -2058,7 +1936,7 @@
                 doc,
                 'verify',
                 'Verify files',
-                mod.name,
+                displayName,
                 unavailableId,
                 lifecycleAction(options.onVerify)
             ),
@@ -2066,7 +1944,7 @@
                 doc,
                 'repair',
                 'Repair',
-                mod.name,
+                displayName,
                 unavailableId,
                 mutationAction(options.onRepair),
                 options.preflightReview ? LIFECYCLE_UNAVAILABLE : PREFLIGHT_UNAVAILABLE
@@ -2075,7 +1953,7 @@
                 doc,
                 'open-folder',
                 'Open folder',
-                mod.name,
+                displayName,
                 unavailableId,
                 openFolder
             ),
@@ -2083,7 +1961,7 @@
                 doc,
                 'uninstall',
                 'Uninstall',
-                mod.name,
+                displayName,
                 unavailableId,
                 mutationAction(options.onUninstall),
                 options.preflightReview ? LIFECYCLE_UNAVAILABLE : PREFLIGHT_UNAVAILABLE
@@ -2104,11 +1982,11 @@
 
     function errorMessage(productError) {
         const known = {
-            installation_busy: 'Another operation is using this installation.',
-            provider_offline: 'The provider is currently unavailable.',
-            verification_failed: 'Installed files could not be verified.'
+            installation_busy: uiText("Another operation is using this installation."),
+            provider_offline: uiText("The provider is currently unavailable."),
+            verification_failed: uiText("Installed files could not be verified.")
         };
-        return known[productError?.code] || 'Installed mod data could not be loaded.';
+        return known[productError?.code] || uiText("Installed mod data could not be loaded.");
     }
 
     function installedModNeedsAttention(mod) {
@@ -2125,21 +2003,16 @@
         const toolbar = createElement(doc, 'div', 'product-library-toolbar');
         toolbar.setAttribute('role', 'search');
 
-        const searchLabel = createElement(
-            doc,
-            'label',
-            'product-visually-hidden',
-            'Search installed mods'
-        );
+        const searchLabel = uiRender(createElement(doc, 'label', 'product-visually-hidden'), () => uiText("Search installed mods"));
         const search = createElement(doc, 'input', 'product-library-search');
         const searchId = nextId('installed-mod-search');
         search.id = searchId;
         search.type = 'search';
-        search.placeholder = 'Search name, version, or provider';
+        uiRender(search, () => uiText("Search name, version, or provider"), "placeholder");
         search.autocomplete = 'off';
         searchLabel.setAttribute('for', searchId);
 
-        const filterLabel = createElement(doc, 'label', 'product-visually-hidden', 'Filter mods');
+        const filterLabel = uiRender(createElement(doc, 'label', 'product-visually-hidden'), () => uiText("Filter mods"));
         const filter = createElement(doc, 'select', 'product-library-filter');
         const filterId = nextId('installed-mod-filter');
         filter.id = filterId;
@@ -2150,7 +2023,7 @@
             ['attention', 'Needs attention'],
             ['healthy', 'Healthy']
         ].forEach(([value, label]) => {
-            const option = createElement(doc, 'option', null, label);
+            const option = uiRender(createElement(doc, 'option', null), () => uiText(label));
             option.value = value;
             option.setAttribute('value', value);
             filter.appendChild(option);
@@ -2243,7 +2116,7 @@
         } else if (state === 'error') {
             view.appendChild(ErrorState({
                 document: doc,
-                message: errorMessage(model.productError || model.catalogErrors?.[0]),
+                message: () => errorMessage(model.productError || model.catalogErrors?.[0]),
                 ...options.error
             }));
         } else if (state === 'empty' || mods.length === 0) {
@@ -2261,6 +2134,7 @@
                 'product-library-warning',
                 safeText(model.libraryWarning)
             );
+            if (Number.isInteger(model.libraryWarningCount)) uiRender(warning, () => uiText(model.source === 'legacy-live' ? 'Installed records that could not be read: {0}.' : 'Local packages that could not be adopted safely: {0}.', uiNumber(model.libraryWarningCount)));
             warning.setAttribute('role', 'status');
             view.appendChild(warning);
         }
@@ -2299,12 +2173,7 @@
             return view;
         }
 
-        const summary = createElement(
-            doc,
-            'p',
-            'product-library-summary',
-            `${mods.length} installed ${mods.length === 1 ? 'package' : 'packages'}`
-        );
+        const summary = uiRender(createElement(doc, 'p', 'product-library-summary'), () => uiText('Installed packages: {0}', uiNumber(mods.length)));
         summary.setAttribute('role', 'status');
         const list = createElement(doc, 'div', 'product-mod-list');
         list.setAttribute('role', 'list');
@@ -2320,16 +2189,11 @@
                 onRepair: options.onRepair,
                 onUninstall: options.onUninstall
             })));
-            summary.textContent = visible.length === mods.length
-                ? `${mods.length} installed ${mods.length === 1 ? 'package' : 'packages'}`
-                : `${visible.length} of ${mods.length} installed packages shown`;
+            uiRender(summary, () => visible.length === mods.length
+                ? uiText('Installed packages: {0}', uiNumber(mods.length))
+                : uiText("{0} of {1} installed packages shown", uiNumber(visible.length), uiNumber(mods.length)));
             if (visible.length === 0) {
-                list.appendChild(createElement(
-                    doc,
-                    'p',
-                    'product-library-empty-filter',
-                    'No installed mods match this search.'
-                ));
+                list.appendChild(uiRender(createElement(doc, 'p', 'product-library-empty-filter'), () => uiText("No installed mods match this search.")));
             }
         };
         const toolbar = InstalledModsToolbar(mods, {

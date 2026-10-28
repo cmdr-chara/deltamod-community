@@ -1,4 +1,18 @@
 (() => {
+
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
     window._intervals = window._intervals || [];
@@ -7,7 +21,7 @@ const setInterval = (handler, delay, ...args) => {
 };
 async function locateDelta() {
     if (window.gid == 'noid') {
-        htmlAlert("Warning","Please select a game.",[{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Warning"),uiText("Please select a game."),[{text:uiText("Ok"),resolveWith:'ok'}]);
         return;
     }
     try {
@@ -16,17 +30,17 @@ async function locateDelta() {
             document.getElementById('dpath').value = path;
         }
         else if (path === "Invalid") {
-            htmlAlert("Warning","The selected folder is not a valid installation for " + window.gidName + ".", [{text:"Ok",resolveWith:'ok'}]);
+            htmlAlert(uiText("Warning"), uiText('The selected folder is not a valid installation for {0}.', window.gidName), [{text:uiText("Ok"),resolveWith:'ok'}]);
         }
     } catch (error) {
-        htmlAlert("Error", "Could not open the folder picker: " + String(error?.message || error), [{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Error"), uiText('Could not open the folder picker: {0}', String(error?.message || error)), [{text:uiText("Ok"),resolveWith:'ok'}]);
     }
 }
 
 async function id() {
     console.log(document.getElementById('dpath').value.replaceAll('\\', '/'));
     if (window.gid == 'noid') {
-        htmlAlert("Warning","Please select a game.",[{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Warning"),uiText("Please select a game."),[{text:uiText("Ok"),resolveWith:'ok'}]);
         return;
     }
     setImportControlsDisabled(true);
@@ -36,7 +50,7 @@ async function id() {
 
 async function steam() {
     if (window.gid == 'noid') {
-        htmlAlert("Warning","Please select a game.",[{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Warning"),uiText("Please select a game."),[{text:uiText("Ok"),resolveWith:'ok'}]);
         return;
     }
     try {
@@ -51,10 +65,10 @@ async function steam() {
                 page(window.fromIM ? 'installmanager' : 'main');
                 return;
             }
-            htmlAlert("Warning", "Steam could not find a valid installation for " + window.gidName + ".", [{text:"Ok",resolveWith:'ok'}]);
+            htmlAlert(uiText("Warning"), uiText('Steam could not find a valid installation for {0}.', window.gidName), [{text:uiText("Ok"),resolveWith:'ok'}]);
         }
     } catch (error) {
-        htmlAlert("Error", "Could not import from Steam: " + String(error?.message || error), [{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Error"), uiText('Could not import from Steam: {0}', String(error?.message || error)), [{text:uiText("Ok"),resolveWith:'ok'}]);
     }
 }
 
@@ -70,7 +84,7 @@ window.currentPageStack.steam = steam;
 
 window.currentPageStack.downloadDelta = async function() {
     if (window.gid == 'noid') {
-        htmlAlert("Warning","Please select a game.",[{text:"Ok",resolveWith:'ok'}]);
+        htmlAlert(uiText("Warning"),uiText("Please select a game."),[{text:uiText("Ok"),resolveWith:'ok'}]);
         return;
     }
     var path = await window.deltamodBackend.invoke("downloadGame", [window.gid]);
@@ -85,7 +99,7 @@ window.currentPageStack.downloadDelta = async function() {
 
 var currentGameImportOperation = null;
 function formatImportBytes(value) {
-    if (!Number.isFinite(value)) return '0 B';
+    if (!Number.isFinite(value)) return `${uiNumber(0)} B`;
     const units = ['B', 'KiB', 'MiB', 'GiB'];
     let amount = value;
     let unit = 0;
@@ -93,7 +107,7 @@ function formatImportBytes(value) {
         amount /= 1024;
         unit += 1;
     }
-    return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    return `${uiNumber(amount, { minimumFractionDigits: unit === 0 ? 0 : 1, maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
 }
 
 function setImportControlsDisabled(disabled) {
@@ -121,10 +135,9 @@ var removeGameImportListener = window.preloadAPI.onGameImportProgress(progress =
     const container = document.getElementById('gameImportProgress');
     if (!container) return;
     container.hidden = false;
-    document.getElementById('gameImportPhase').textContent =
-        progress.phase === 'commit' ? 'Finalizing import…' : 'Copying game files…';
-    document.getElementById('gameImportAmount').textContent =
-        `${formatImportBytes(progress.completed)} / ${formatImportBytes(progress.total)}`;
+    uiRender(document.getElementById('gameImportPhase'), () => progress.phase === 'commit' ? uiText("Finalizing import…") : uiText("Copying game files…"));
+    uiRender(document.getElementById('gameImportAmount'), () =>
+        `${formatImportBytes(progress.completed)} / ${formatImportBytes(progress.total)}`);
     document.getElementById('gameImportFile').textContent = progress.currentItem || '';
     document.getElementById('gameImportBar').value =
         progress.total > 0 ? Math.min(1, progress.completed / progress.total) : 0;
@@ -135,7 +148,7 @@ window._onClosePage.push(removeGameImportListener);
 document.getElementById('cancelGameImport').onclick = async () => {
     if (!currentGameImportOperation) return;
     await window.deltamodBackend.invoke('cancelGameImport', [currentGameImportOperation]);
-    document.getElementById('gameImportPhase').textContent = 'Cancelling…';
+    uiRender(document.getElementById('gameImportPhase'), () => uiText("Cancelling…"));
 };
 
 (async() => {

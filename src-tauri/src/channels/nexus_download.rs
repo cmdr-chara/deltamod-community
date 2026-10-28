@@ -13,31 +13,43 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::watch;
 
+// These parameters are fixed app-owned labels, never provider diagnostics.
+fn download_failure(code: &'static str, message: &'static str) -> Value {
+    json!({
+        "code": code,
+        "message": crate::localization::text(message),
+        "messageSource": message
+    })
+}
+
 fn nexus_download_error(error: RuntimeError) -> Value {
     let error = match error {
-        RuntimeError::Auth(_) | RuntimeError::Http { status: 401, .. } => json!({
-            "code": "NEXUS_AUTH_FAILED",
-            "message": "Nexus Mods authorization is no longer valid. Sign in again."
-        }),
-        RuntimeError::Http { status: 403, .. } | RuntimeError::Unsupported(_) => json!({
-            "code": "NEXUS_MANUAL_DOWNLOAD_REQUIRED",
-            "message": "This Nexus Mods file must be downloaded from its website."
-        }),
+        RuntimeError::Auth(_) | RuntimeError::Http { status: 401, .. } => download_failure(
+            "NEXUS_AUTH_FAILED",
+            "Nexus Mods authorization is no longer valid. Sign in again.",
+        ),
+        RuntimeError::Http { status: 403, .. } | RuntimeError::Unsupported(_) => download_failure(
+            "NEXUS_MANUAL_DOWNLOAD_REQUIRED",
+            "This Nexus Mods file must be downloaded from its website.",
+        ),
         RuntimeError::Http {
             status: 429,
             envelope,
             ..
-        } => json!({
-            "code": "NEXUS_RATE_LIMITED",
-            "message": "Nexus Mods asked Deltamod to wait before trying again.",
-            "status": 429,
-            "retryAfterMs": envelope.retry_after_ms,
-            "quota": envelope.quota
-        }),
-        _ => json!({
-            "code": "NEXUS_DOWNLOAD_FAILED",
-            "message": "The Nexus Mods download could not be completed."
-        }),
+        } => {
+            let mut failure = download_failure(
+                "NEXUS_RATE_LIMITED",
+                "Nexus Mods asked Deltamod to wait before trying again.",
+            );
+            failure["status"] = json!(429);
+            failure["retryAfterMs"] = json!(envelope.retry_after_ms);
+            failure["quota"] = json!(envelope.quota);
+            failure
+        }
+        _ => download_failure(
+            "NEXUS_DOWNLOAD_FAILED",
+            "The Nexus Mods download could not be completed.",
+        ),
     };
     json!({"ok": false, "error": error})
 }
@@ -107,10 +119,7 @@ fn download_nexus<D: ChoiceBackend>(
         Ok(None) => {
             return Ok(json!({
                 "ok": false,
-                "error": {
-                    "code": "NEXUS_AUTH_REQUIRED",
-                    "message": "Nexus Mods authorization is required."
-                }
+                "error": download_failure("NEXUS_AUTH_REQUIRED", "Nexus Mods authorization is required.")
             }));
         }
         Err(failure) => return Ok(failure.response()),
@@ -133,10 +142,7 @@ fn download_nexus<D: ChoiceBackend>(
     if validate_download_url(&resolved.download_url, HostAllowlist::NEXUS).is_err() {
         return Ok(json!({
             "ok": false,
-            "error": {
-                "code": "NEXUS_DOWNLOAD_FAILED",
-                "message": "Nexus Mods returned an unapproved download host."
-            }
+            "error": download_failure("NEXUS_DOWNLOAD_FAILED", "Nexus Mods returned an unapproved download host.")
         }));
     }
     let download_policy = DownloadPolicy {
@@ -157,7 +163,8 @@ fn download_nexus<D: ChoiceBackend>(
                     "phase": "download",
                     "completed": progress.completed,
                     "total": progress.total.unwrap_or(0),
-                    "currentItem": "Nexus Mods archive"
+                    "currentItem": crate::localization::text("Nexus Mods archive"),
+                    "currentItemSource": "Nexus Mods archive"
                 }),
             );
         },
@@ -199,17 +206,11 @@ fn download_nexus<D: ChoiceBackend>(
         }
         Ok(_) => Ok(json!({
             "ok": false,
-            "error": {
-                "code": "NEXUS_DOWNLOAD_FAILED",
-                "message": "The downloaded mod was not imported."
-            }
+            "error": download_failure("NEXUS_DOWNLOAD_FAILED", "The downloaded mod was not imported.")
         })),
         Err(_) => Ok(json!({
             "ok": false,
-            "error": {
-                "code": "NEXUS_DOWNLOAD_FAILED",
-                "message": "The downloaded Nexus Mods archive could not be imported."
-            }
+            "error": download_failure("NEXUS_DOWNLOAD_FAILED", "The downloaded Nexus Mods archive could not be imported.")
         })),
     }
 }
@@ -224,5 +225,76 @@ pub fn dispatch<D: ChoiceBackend>(
     match channel {
         "modSources:downloadNexus" => download_nexus(app, state, dialogs, data).map(Some),
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deltamod_network_runtime::{ErrorEnvelope, QuotaWindow};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn download_failure_keeps_codes_and_never_exposes_raw_provider_diagnostics() {
+        for (error, code, source) in [
+            (
+                RuntimeError::Auth("private authorization detail".into()),
+                "NEXUS_AUTH_FAILED",
+                "Nexus Mods authorization is no longer valid. Sign in again.",
+            ),
+            (
+                RuntimeError::Unsupported("private provider detail".into()),
+                "NEXUS_MANUAL_DOWNLOAD_REQUIRED",
+                "This Nexus Mods file must be downloaded from its website.",
+            ),
+            (
+                RuntimeError::IncompleteDownload,
+                "NEXUS_DOWNLOAD_FAILED",
+                "The Nexus Mods download could not be completed.",
+            ),
+        ] {
+            let response = nexus_download_error(error);
+            assert_eq!(response["ok"], false);
+            assert_eq!(response["error"]["code"], code);
+            assert_eq!(response["error"]["messageSource"], source);
+            assert_eq!(
+                response["error"]["message"],
+                crate::localization::text(source)
+            );
+            assert!(!response.to_string().contains("private"));
+        }
+    }
+
+    #[test]
+    fn localized_rate_limit_failure_retains_retry_and_quota_metadata() {
+        let quota = BTreeMap::from([(
+            "hourly".to_owned(),
+            QuotaWindow {
+                limit: Some(100),
+                remaining: Some(0),
+                reset_unix: Some(1234),
+            },
+        )]);
+        let response = nexus_download_error(RuntimeError::Http {
+            status: 429,
+            message: "private server detail".into(),
+            envelope: Box::new(ErrorEnvelope {
+                operation_id: Some("private-operation-id".into()),
+                code: "private-provider-code".into(),
+                message: "private provider detail".into(),
+                status: Some(429),
+                retry_after_ms: Some(30_000),
+                quota: quota.clone(),
+            }),
+        });
+        assert_eq!(response["error"]["code"], "NEXUS_RATE_LIMITED");
+        assert_eq!(response["error"]["status"], 429);
+        assert_eq!(response["error"]["retryAfterMs"], 30_000);
+        assert_eq!(response["error"]["quota"], json!(quota));
+        assert_eq!(
+            response["error"]["messageSource"],
+            "Nexus Mods asked Deltamod to wait before trying again."
+        );
+        assert!(!response.to_string().contains("private"));
     }
 }

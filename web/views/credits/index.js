@@ -1,4 +1,18 @@
 (() => {
+
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
 const GB_URL = 'https://gamebanana.com/apiv11/Tool/20575/ProfilePage';
 const CACHE_KEY = 'deltamod-original-credits';
 const FALLBACK_AVATAR = 'img/packIcon.png';
@@ -20,7 +34,7 @@ function renderContributorCredits(profile, fromCache) {
     if (groups.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'calibri credits-state';
-        empty.textContent = 'Contributor credits are currently unavailable.';
+        uiRender(empty, () => uiText("Contributor credits are currently unavailable."));
         creditsRoot.appendChild(empty);
         return;
     }
@@ -32,7 +46,7 @@ function renderContributorCredits(profile, fromCache) {
         const title = document.createElement('h3');
         title.id = `credit-role-${groupIndex}`;
         section.setAttribute('aria-labelledby', title.id);
-        title.textContent = group?._sGroupName || 'Contributors';
+        uiRender(title, () => group?._sGroupName || uiText("Contributors"));
         section.appendChild(title);
 
         const people = document.createElement('ul');
@@ -51,7 +65,7 @@ function renderContributorCredits(profile, fromCache) {
             setAvatarFallback(avatar);
 
             const name = document.createElement('span');
-            name.textContent = credit?._sName || 'Unknown contributor';
+            uiRender(name, () => credit?._sName || uiText("Unknown contributor"));
 
             person.append(avatar, name);
             people.appendChild(person);
@@ -64,7 +78,7 @@ function renderContributorCredits(profile, fromCache) {
     if (fromCache) {
         const cached = document.createElement('p');
         cached.className = 'calibri credits-cache-note';
-        cached.textContent = 'Offline copy of the original project credits.';
+        uiRender(cached, () => uiText("Offline copy of the original project credits."));
         creditsRoot.appendChild(cached);
     }
 }
@@ -100,7 +114,7 @@ async function loadContributorProfile(signal) {
     });
 
     const version = await window.communityAPI.app.version();
-    document.querySelector('#version').textContent = `Version ${version}`;
+    uiRender(document.querySelector('#version'), () => uiText("Version {0}", version));
 
     try {
         const result = await loadContributorProfile(controller.signal);

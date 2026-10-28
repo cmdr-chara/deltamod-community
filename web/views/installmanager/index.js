@@ -1,4 +1,24 @@
 (() => {
+
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
+const uiTooltip = (target, render, options = {}) => {
+    const copy = document.createElement('span');
+    uiRender(copy, render);
+    return tippy(target, { ...options, content: copy, onShow: () => { uiRender(copy, render); } });
+};
+
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
     window._intervals = window._intervals || [];
@@ -48,10 +68,10 @@ const setInterval = (handler, delay, ...args) => {
                 editablespan.style.margin = '0';
                 editablespan.style.height = '22px';
                 editablespan.style.fontSize = '16px';
-                let savedName = install.name || `Install #${install.index + 1}`;
+                let savedName = install.name || uiText("Install #{0}", install.index + 1);
                 editablespan.value = savedName;
                 editablespan.maxLength = 100;
-                editablespan.setAttribute('aria-label', window.Localization?.t('installation', 'Installation') || 'Installation');
+                uiRender(editablespan, () => window.Localization?.t('installation', 'Installation') || uiText("Installation"), 'aria-label');
                 editablespan.addEventListener('keydown', event => {
                     if (event.key === 'Enter') { event.preventDefault(); editablespan.blur(); }
                     if (event.key === 'Escape') { editablespan.value = savedName; editablespan.blur(); }
@@ -81,13 +101,15 @@ const setInterval = (handler, delay, ...args) => {
                 {
                     const gname = await window.deltamodBackend
                         .invoke('getGameInfo', [install.pid])
-                        .then(g => g?.name || 'Unknown game');
+                        .then(g => g?.name);
 
-                    details.textContent = `${gname} · ${install.steam ? 'Steam' : 'Manual'}`;
+                    const summary = document.createElement('span');
+                    uiRender(summary, () => `${gname || uiText('Unknown game')} · ${install.steam ? 'Steam' : uiText("Manual")}`);
+                    details.appendChild(summary);
                     if (!install.valid) {
                         const invalid = document.createElement('span');
                         invalid.className = 'installation-invalid';
-                        invalid.textContent = `Needs attention: ${install.issues.join('; ')}`;
+                        uiRender(invalid, () => uiText("Needs attention: {0}", install.issues.join('; ')));
                         invalid.style.display = 'block';
                         invalid.style.color = '#ffb3a3';
                         invalid.style.marginTop = '4px';
@@ -123,46 +145,36 @@ const setInterval = (handler, delay, ...args) => {
                     goBtn.style.opacity = '0.3';
                     goBtn.innerHTML = icon(index == install.index ? 'check_circle' : 'warning', '18px');
                 }
-                goBtn.setAttribute(
-                    'aria-label',
-                    !install.valid
-                        ? 'Installation needs repair'
+                uiRender(goBtn, () => !install.valid
+                        ? uiText("Installation needs repair")
                         : index == install.index
-                        ? 'Current installation'
-                        : 'Switch to this installation'
-                );
+                        ? uiText("Current installation")
+                        : uiText("Switch to this installation"), 'aria-label');
 
                 buttonsDiv.appendChild(goBtn);
 
-                tippy(goBtn, {
-                    content:
-                        !install.valid
-                            ? 'Repair or re-import this installation before switching to it'
+                uiTooltip(goBtn, () => !install.valid
+                            ? uiText("Repair or re-import this installation before switching to it")
                             : index == install.index
-                            ? 'Current installation'
-                            : 'Switch to this installation',
-                    placement: 'top',
-                    delay: [500, 0],
-                });
+                            ? uiText("Current installation")
+                            : uiText("Switch to this installation"), {placement: 'top', delay: [500, 0]});
 
                 let deleteBtn = document.createElement('button');
                 deleteBtn.style.padding = '4px';
                 deleteBtn.style.textAlign = 'center';
                 deleteBtn = adaptForIcons(deleteBtn);
                 deleteBtn.innerHTML = icon('delete', '18px');
-                deleteBtn.setAttribute('aria-label', 'Delete installation');
+                uiRender(deleteBtn, () => uiText("Delete installation"), 'aria-label');
 
                 deleteBtn.onclick = async () => {
                     let resp = 'N';
                     if (!window.ctrlDown) {
                         resp = await htmlAlert(
-                            'Warning',
-                            `Are you sure you want to delete the installation "${
-                                install.name || `Install #${install.index + 1}`
-                            }"? This action cannot be undone.`,
+                            uiText("Warning"),
+                            uiText("Are you sure you want to delete the installation \"{0}\"? This action cannot be undone.", install.name || uiText('Install #{0}', uiNumber(install.index + 1))),
                             [
-                                { text: 'Yes', resolveWith: 'Y' },
-                                { text: 'No', resolveWith: 'N' },
+                                { text: uiText("Yes"), resolveWith: 'Y' },
+                                { text: uiText("No"), resolveWith: 'N' },
                             ]
                         );
                     }
@@ -179,43 +191,39 @@ const setInterval = (handler, delay, ...args) => {
 
                 buttonsDiv.appendChild(deleteBtn);
 
-                tippy(deleteBtn, {
-                    content: 'Delete installation',
-                    placement: 'top',
-                    delay: [500, 0],
-                });
+                uiTooltip(deleteBtn, () => uiText("Delete installation"), {placement: 'top', delay: [500, 0]});
 
                 if (!install.valid) {
                     let repairBtn = document.createElement('button');
                     repairBtn.style.padding = '4px';
                     repairBtn = adaptForIcons(repairBtn);
                     repairBtn.innerHTML = icon('build', '18px');
-                    repairBtn.setAttribute('aria-label', 'Attempt safe repair');
+                    uiRender(repairBtn, () => uiText("Attempt safe repair"), 'aria-label');
                     repairBtn.onclick = async () => {
                         const result = await window.deltamodBackend.invoke('repairInstallation', [
                             install.index.toString()
                         ]);
                         if (result.repaired) {
-                            await htmlAlert('Repair complete', 'The installation is valid again.', [
-                                { text: 'OK', resolveWith: 'ok' }
+                            await htmlAlert(uiText("Repair complete"), uiText("The installation is valid again."), [
+                                { text: uiText("OK"), resolveWith: 'ok' }
                             ]);
                             page('installmanager');
                         } else {
                             await htmlAlert(
-                                'Repair could not finish',
-                                `${result.issues.join('\n')}\n\nUse Re-import to select a clean game folder. Existing data was not deleted.`,
-                                [{ text: 'OK', resolveWith: 'ok' }]
+                                uiText("Repair could not finish"),
+                                uiText("{0}\n\nUse Re-import to select a clean game folder. Existing data was not deleted.", result.issues.join('\n')),
+                                [{ text: uiText("OK"), resolveWith: 'ok' }]
                             );
                         }
                     };
                     buttonsDiv.appendChild(repairBtn);
-                    tippy(repairBtn, { content: 'Attempt safe repair', placement: 'top', delay: [500, 0] });
+                    uiTooltip(repairBtn, () => uiText("Attempt safe repair"), {placement: 'top', delay: [500, 0]});
 
                     let reimportBtn = document.createElement('button');
                     reimportBtn.style.padding = '4px';
                     reimportBtn = adaptForIcons(reimportBtn);
                     reimportBtn.innerHTML = icon('drive_folder_upload', '18px');
-                    reimportBtn.setAttribute('aria-label', 'Re-import game files');
+                    uiRender(reimportBtn, () => uiText("Re-import game files"), 'aria-label');
                     reimportBtn.onclick = async () => {
                         const result = await window.deltamodBackend.invoke('reimportInstallation', [
                             install.index.toString()
@@ -223,7 +231,7 @@ const setInterval = (handler, delay, ...args) => {
                         if (result?.repaired) page('installmanager');
                     };
                     buttonsDiv.appendChild(reimportBtn);
-                    tippy(reimportBtn, { content: 'Re-import from a clean game folder', placement: 'top', delay: [500, 0] });
+                    uiTooltip(reimportBtn, () => uiText("Re-import from a clean game folder"), {placement: 'top', delay: [500, 0]});
                 }
 
                 let shortcutBtn = document.createElement('button');
@@ -231,19 +239,19 @@ const setInterval = (handler, delay, ...args) => {
                 shortcutBtn.style.textAlign = 'center';
                 shortcutBtn = adaptForIcons(shortcutBtn);
                 shortcutBtn.innerHTML = icon('forward', '18px');
-                shortcutBtn.title = 'Create shortcut on desktop';
-                shortcutBtn.setAttribute('aria-label', 'Create shortcut on desktop');
+                uiRender(shortcutBtn, () => uiText("Create shortcut on desktop"), "title");
+                uiRender(shortcutBtn, () => uiText("Create shortcut on desktop"), 'aria-label');
                 const canCreateShortcut = window.deltamodBackend.isCommandAvailable('createInstallLink');
                 shortcutBtn.disabled = !canCreateShortcut;
                 if (!canCreateShortcut) {
-                    shortcutBtn.title = 'Desktop shortcut creation is unavailable in this app build';
+                    uiRender(shortcutBtn, () => uiText("Desktop shortcut creation is unavailable in this app build"), "title");
                 }
                 shortcutBtn.onclick = async () => {
                     if (!(await window.deltamodBackend.invoke('isPackaged', []))) {
                         await htmlAlert(
-                            'Error',
-                            'This feature is only available when Deltamod is packaged.',
-                            [{ text: 'Ok', resolveWith: 'ok' }]
+                            uiText("Error"),
+                            uiText("This feature is only available when Deltamod is packaged."),
+                            [{ text: uiText("Ok"), resolveWith: 'ok' }]
                         );
                         return;
                     }
@@ -253,32 +261,28 @@ const setInterval = (handler, delay, ...args) => {
                         ]);
                         if (!result?.created) throw new Error('The desktop link was not created.');
                         await htmlAlert(
-                            'Desktop link created',
-                            'A Deltamod shortcut was added to your desktop.',
-                            [{ text: 'OK', resolveWith: 'ok' }]
+                            uiText("Desktop link created"),
+                            uiText("A Deltamod shortcut was added to your desktop."),
+                            [{ text: uiText("OK"), resolveWith: 'ok' }]
                         );
                     } catch (error) {
                         await htmlAlert(
-                            'Could not create desktop link',
+                            uiText("Could not create desktop link"),
                             error?.message || String(error),
-                            [{ text: 'OK', resolveWith: 'ok' }]
+                            [{ text: uiText("OK"), resolveWith: 'ok' }]
                         );
                     }
                 };
-                tippy(shortcutBtn, {
-                    content: canCreateShortcut
-                        ? 'Create shortcut on desktop'
-                        : 'Desktop shortcut creation is unavailable in this app build',
-                    placement: 'top',
-                    delay: [500, 0],
-                });
+                uiTooltip(shortcutBtn, () => canCreateShortcut
+                        ? uiText("Create shortcut on desktop")
+                        : uiText("Desktop shortcut creation is unavailable in this app build"), {placement: 'top', delay: [500, 0]});
 
                 let openBtn = document.createElement('button');
                 openBtn.style.padding = '4px';
                 openBtn.style.textAlign = 'center';
                 openBtn = adaptForIcons(openBtn);
                 openBtn.innerHTML = icon('folder_open', '18px');
-                openBtn.setAttribute('aria-label', 'Open installation folder');
+                uiRender(openBtn, () => uiText("Open installation folder"), 'aria-label');
 
                 openBtn.onclick = () => {
                     window.deltamodBackend.invoke('openInstallationFolder', [
@@ -286,11 +290,7 @@ const setInterval = (handler, delay, ...args) => {
                     ]);
                 };
 
-                tippy(openBtn, {
-                    content: 'Open installation folder',
-                    placement: 'top',
-                    delay: [500, 0],
-                });
+                uiTooltip(openBtn, () => uiText("Open installation folder"), {placement: 'top', delay: [500, 0]});
 
                 buttonsDiv.appendChild(shortcutBtn);
                 buttonsDiv.appendChild(openBtn);
@@ -324,8 +324,10 @@ const setInterval = (handler, delay, ...args) => {
         newButton.style.justifyContent = 'center';
         newButton.style.textAlign = 'center';
 
-        newButton.innerHTML =
-            icon('create_new_folder', '18px') + ' Create new installation';
+        newButton.innerHTML = icon('create_new_folder', '18px');
+        const createLabel = document.createElement('span');
+        uiRender(createLabel, () => uiText('Create new installation'));
+        newButton.appendChild(createLabel);
 
         newButton.onclick = () => {
             window.fromIM = true;
@@ -345,7 +347,7 @@ const setInterval = (handler, delay, ...args) => {
         errorTD.style.fontWeight = 'bold';
 
         var errortitle = document.createElement('div');
-        errortitle.innerText = 'Error loading installations';
+        uiRender(errortitle, () => uiText("Error loading installations"));
         errortitle.style.fontSize = '18px';
         errortitle.style.marginBottom = '10px';
         errorTD.appendChild(errortitle);
@@ -360,7 +362,7 @@ const setInterval = (handler, delay, ...args) => {
         document.querySelector('#installations-list').appendChild(errorTR);
     }
 })().catch(e => {
-    window.alert('Unexpected error: ' + e.message + '\n' + e.stack);
+    window.alert(uiText('Unexpected error: {0}', [e?.message, e?.stack].filter(Boolean).join('\n') || String(e)));
 });
 
 elisten(document, 'keydown', e => {

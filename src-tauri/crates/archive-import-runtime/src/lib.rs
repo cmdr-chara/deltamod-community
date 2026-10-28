@@ -2334,6 +2334,57 @@ mod tests {
     }
 
     #[test]
+    fn optional_disclosure_metadata_survives_import_without_affecting_acceptance() {
+        let original = valid_entries();
+        let manifest = original
+            .iter()
+            .find(|(name, _)| name.ends_with("meta.toml"))
+            .unwrap()
+            .1;
+        let disclosure = format!(
+            "{}\n[metadata.ai_disclosure]\nprovided = true\nstatement = \"Author-supplied optional disclosure: 雪 / العربية\"\n",
+            std::str::from_utf8(manifest).unwrap()
+        );
+        let entries: Vec<(&str, &[u8])> = original
+            .iter()
+            .map(|(name, bytes)| {
+                (
+                    *name,
+                    if name.ends_with("meta.toml") {
+                        disclosure.as_bytes()
+                    } else {
+                        *bytes
+                    },
+                )
+            })
+            .collect();
+        let archive = zip_fixture(&entries);
+        let packets = tempfile::tempdir().unwrap();
+        let source = LegacySourceMetadata::new("1234", "Mod").unwrap();
+        let imported = import_archive_with_source(
+            archive.path(),
+            packets.path(),
+            Limits::default(),
+            Some(&source),
+            || false,
+            |_| DuplicateDecision::Cancel,
+        )
+        .unwrap();
+        let result: toml::Value =
+            toml::from_str(&fs::read_to_string(imported.destination.join("meta.toml")).unwrap())
+                .unwrap();
+        assert_eq!(
+            result["metadata"]["ai_disclosure"]["provided"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            result["metadata"]["ai_disclosure"]["statement"].as_str(),
+            Some("Author-supplied optional disclosure: 雪 / العربية")
+        );
+        assert_eq!(result["metadata"]["gamebanana_id"].as_str(), Some("1234"));
+    }
+
+    #[test]
     fn game_archive_unwraps_validates_and_commits_atomically() {
         let archive = zip_fixture(&[(
             "game/DELTARUNE.exe",

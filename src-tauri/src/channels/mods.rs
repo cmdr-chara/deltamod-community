@@ -231,15 +231,23 @@ fn normalized_provider_error(provider: KnownProvider, kind: ProviderFailureKind)
     let contract =
         normalize_provider_error(ProviderErrorInput::new(provider, kind)).into_contract();
     let payload = contract.into_payload();
+    let message_source = match kind {
+        ProviderFailureKind::Offline => {
+            "The provider is offline. Cached results are unavailable for this request."
+        }
+        ProviderFailureKind::AuthenticationRequired => {
+            "Connect this provider account before browsing its catalogue."
+        }
+        ProviderFailureKind::RateLimited => {
+            "The provider rate limit was reached. Try again after the reported wait period."
+        }
+        _ => "The provider catalogue is temporarily unavailable.",
+    };
     json!({
         "code": payload.code.as_str(),
         "messageKey": payload.message_key,
-        "message": match kind {
-            ProviderFailureKind::Offline => "The provider is offline. Cached results are unavailable for this request.",
-            ProviderFailureKind::AuthenticationRequired => "Connect this provider account before browsing its catalogue.",
-            ProviderFailureKind::RateLimited => "The provider rate limit was reached. Try again after the reported wait period.",
-            _ => "The provider catalogue is temporarily unavailable.",
-        },
+        "message": crate::localization::text(message_source),
+        "messageSource": message_source,
         "retryable": payload.retryable,
         "recoveryAction": payload.recovery_action,
     })
@@ -353,7 +361,9 @@ fn moddb_catalog(slug: &str, entries: Vec<ModEntry>, query: Option<&str>) -> Val
                 "canonicalIdentity": canonical_identity,
                 "title": entry.title,
                 "summary": entry.summary.unwrap_or_default(),
-                "author": "ModDB contributor",
+                "author": crate::localization::format("{0} contributor", &["ModDB"]),
+                "authorSource": "{0} contributor",
+                "authorSourceArgs": ["ModDB"],
                 "updatedAt": entry.published.unwrap_or_default(),
                 "imageUrl": entry.image_url,
                 "sourceUrl": entry.link,
@@ -368,7 +378,9 @@ fn moddb_catalog(slug: &str, entries: Vec<ModEntry>, query: Option<&str>) -> Val
         "catalogScope": "recent-rss",
         "feedLimit": 10,
         "hasMore": false,
-        "attribution": "ModDB RSS exposes only its 10 most recent downloads",
+        "attribution": crate::localization::format("ModDB RSS exposes only its {0} most recent downloads", &["10"]),
+        "attributionSource": "ModDB RSS exposes only its {0} most recent downloads",
+        "attributionSourceArgs": [10],
         "catalogUrl": format!("https://www.moddb.com/games/{slug}/downloads"),
         "items": items
     })
@@ -454,13 +466,18 @@ fn nexus_catalog(
                 .get("pictureUrl")
                 .and_then(Value::as_str)
                 .filter(|url| validate_https_url(Provider::Nexus, url).is_ok());
+            let title = node.get("name").and_then(Value::as_str);
+            let author = node.get("author").and_then(Value::as_str);
             Some(json!({
                 "provider": "nexus",
                 "id": mod_id.to_string(),
                 "canonicalIdentity": format!("nexus:{domain}:{mod_id}"),
-                "title": node.get("name").and_then(Value::as_str).unwrap_or("Nexus mod"),
+                "title": title.map(str::to_owned).unwrap_or_else(|| crate::localization::text("Mod")),
+                "titleSource": title.is_none().then_some("Mod"),
                 "summary": node.get("summary").and_then(Value::as_str).unwrap_or_default(),
-                "author": node.get("author").and_then(Value::as_str).unwrap_or("Nexus Mods contributor"),
+                "author": author.map(str::to_owned).unwrap_or_else(|| crate::localization::format("{0} contributor", &["Nexus Mods"])),
+                "authorSource": author.is_none().then_some("{0} contributor"),
+                "authorSourceArgs": if author.is_none() { json!(["Nexus Mods"]) } else { Value::Null },
                 "updatedAt": node.get("updatedAt").and_then(Value::as_str).unwrap_or_default(),
                 "imageUrl": picture_url,
                 "sourceUrl": format!("https://www.nexusmods.com/{domain}/mods/{mod_id}"),
@@ -488,7 +505,9 @@ fn nexus_catalog(
         "catalogScope": "page",
         "hasMore": has_more,
         "totalCount": total_count,
-        "attribution": "Metadata and popularity counts provided by Nexus Mods",
+        "attribution": crate::localization::text("Metadata and popularity counts provided by Nexus Mods"),
+        "attributionSource": "Metadata and popularity counts provided by Nexus Mods",
+        "attributionSourceArgs": [],
         "items": items
     }))
 }
@@ -706,7 +725,8 @@ pub fn dispatch(
                     "configured": true,
                     "connected": true,
                     "valid": true,
-                    "name": user.name.unwrap_or_else(|| "Nexus Mods user".to_owned()),
+                    "nameFallback": user.name.is_none(),
+                    "name": user.name.unwrap_or_else(|| crate::localization::text("Nexus Mods user")),
                     "userId": user.user_id,
                     "premium": user.is_premium.unwrap_or(false),
                     "supporter": user.is_supporter.unwrap_or(false)
@@ -719,7 +739,8 @@ pub fn dispatch(
                     "configured": nexus_oauth::has_tokens(state),
                     "connected": false,
                     "code": failure.code,
-                    "error": failure.message,
+                    "error": crate::localization::text(failure.message),
+                    "errorSource": failure.message,
                     "status": failure.status
                 }))),
             }
@@ -774,8 +795,30 @@ pub fn dispatch(
 
 #[cfg(test)]
 mod tests {
-    use super::{gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog};
+    use super::{
+        gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog,
+        normalized_provider_error,
+    };
     use deltamod_network_runtime::ModEntry;
+    use deltamod_provider_platform::{KnownProvider, ProviderFailureKind};
+
+    #[test]
+    fn owned_provider_errors_keep_typed_recovery_fields_and_translation_sources() {
+        for kind in [
+            ProviderFailureKind::Offline,
+            ProviderFailureKind::AuthenticationRequired,
+            ProviderFailureKind::RateLimited,
+            ProviderFailureKind::Http,
+        ] {
+            let result = normalized_provider_error(KnownProvider::Nexus, kind);
+            let source = result["messageSource"].as_str().unwrap();
+            assert_eq!(result["message"], crate::localization::text(source));
+            assert!(result["code"].as_str().is_some_and(|code| !code.is_empty()));
+            assert!(result["messageKey"].is_string());
+            assert!(result["retryable"].is_boolean());
+            assert!(result["recoveryAction"].is_string());
+        }
+    }
 
     #[test]
     fn gamebanana_profile_pages_are_allowed_natively() {
@@ -830,16 +873,29 @@ mod tests {
         let result = moddb_catalog(
             "undertale",
             vec![ModEntry {
-                title: "A recent mod".into(),
+                title: "Mod".into(),
                 link: "https://www.moddb.com/mods/example/downloads/release".into(),
                 published: Some("Mon, 10 Aug 2026 12:00:00 +0000".into()),
-                summary: Some("Description".into()),
+                summary: Some("Custom theme".into()),
                 image_url: Some("https://media.moddb.com/example.png".into()),
             }],
             None,
         );
         assert_eq!(result["items"].as_array().map(Vec::len), Some(1));
         assert_eq!(result["items"][0]["provider"], "moddb");
+        assert_eq!(result["items"][0]["title"], "Mod");
+        assert!(result["items"][0]["titleSource"].is_null());
+        assert_eq!(result["items"][0]["summary"], "Custom theme");
+        assert_eq!(result["items"][0]["authorSource"], "{0} contributor");
+        assert_eq!(
+            result["items"][0]["authorSourceArgs"],
+            serde_json::json!(["ModDB"])
+        );
+        assert_eq!(result["attributionSourceArgs"], serde_json::json!([10]));
+        assert_eq!(
+            result["attributionSource"],
+            "ModDB RSS exposes only its {0} most recent downloads"
+        );
         assert_eq!(
             result["items"][0]["sourceUrl"],
             "https://www.moddb.com/mods/example/downloads/release"

@@ -104,6 +104,54 @@ describe('native updater progress and cancellation', () => {
         expect(f.document.body.children).toHaveLength(0);
         expect(f.cancel.listeners.size).toBe(0);
     });
+    it('relocalizes active update states while preserving cancellation, progress and raw diagnostics', async () => {
+        const bindings = new Map();
+        let translated = false;
+        const french = {
+            'Cancelling the download...': 'Annulation du téléchargement…',
+            'Cancelling...': 'Annulation…',
+            'Update signature verified. Preparing installation.': 'Signature de la mise à jour vérifiée. Préparation de l’installation.',
+            'Cancel download': 'Annuler le téléchargement'
+        };
+        vi.stubGlobal('Localization', {
+            text: source => translated ? french[source] || source : source,
+            bindComputed: (element, render, attribute = 'textContent') => {
+                if (!bindings.has(element)) bindings.set(element, new Map());
+                const update = () => attribute === 'textContent'
+                    ? element.textContent = render()
+                    : element.setAttribute(attribute, render());
+                bindings.get(element).set(attribute, update);
+                update();
+                return element;
+            }
+        });
+        const refresh = () => { for (const updates of bindings.values()) for (const update of updates.values()) update(); };
+        try {
+            const f = fixture();
+            f.callbacks.status({ state: 'downloading' });
+            f.callbacks.progress({ operationId: 'community-update', total: 100, completed: 42 });
+            await f.cancel.click();
+            translated = true;
+            refresh();
+            expect(f.message.textContent).toBe('Annulation du téléchargement…');
+            expect(f.cancel.textContent).toBe('Annulation…');
+            expect(f.cancel.disabled).toBe(true);
+            expect(f.progress.value).toBe(42);
+            expect(f.api.cancel).toHaveBeenCalledOnce();
+            f.callbacks.status({ state: 'downloaded' });
+            expect(f.message.textContent).toBe('Signature de la mise à jour vérifiée. Préparation de l’installation.');
+            const diagnostic = 'Cancel download /home/user/Ready <tag>';
+            f.handle.failure(diagnostic);
+            translated = false;
+            refresh();
+            expect(f.message.textContent).toBe(diagnostic);
+            expect(f.message.children).toHaveLength(0);
+            f.handle.dispose();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('integrates the notice and native cancel bridge in the production renderer', () => {
         const root = path.join(__dirname, '..');
         const html = fs.readFileSync(path.join(root, 'web/index.html'), 'utf8');

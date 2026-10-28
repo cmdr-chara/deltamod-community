@@ -3,7 +3,16 @@ const pageTable = document.getElementById('modlist');
 pageTable.closest('table').setAttribute('aria-busy', 'true');
 const loadArtwork = window.FrontendRefinements.artworkLoader();
 const t = (key, fallback, ...args) =>
-    window.Localization?.t(key, fallback, ...args) ?? fallback;
+    window.Localization?.t(key, fallback, ...args)
+        ?? String(fallback).replace(/\{(\d+)\}/g, (match, index) => args[index] ?? match);
+const number = value => window.Localization?.number?.(value)
+    ?? new Intl.NumberFormat(window.Localization?.getLocale?.()).format(value);
+function bindText(element, render, attribute = 'textContent') {
+    if (!element) return;
+    if (window.Localization?.bindComputed) window.Localization.bindComputed(element, render, attribute);
+    else if (attribute === 'textContent') element.textContent = render();
+    else element.setAttribute(attribute, render());
+}
 
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
@@ -29,7 +38,9 @@ function purifyDescription(desc) {
 }
 
 const launchButton = document.getElementById('par');
+const vanillaButton = document.getElementById('vanilla');
 launchButton.disabled = true;
+if (vanillaButton) vanillaButton.disabled = true;
 let listReady = false;
 let launching = false;
 let pageActive = true;
@@ -53,7 +64,9 @@ function hasUnsavedEnabledVariants() {
 
 function syncLaunchButton() {
     if (pageIsActive()) {
-        launchButton.disabled = !listReady || pendingWrites.size > 0 || hasUnsavedEnabledVariants() || launching;
+        const disabled = !listReady || pendingWrites.size > 0 || hasUnsavedEnabledVariants() || launching;
+        launchButton.disabled = disabled;
+        if (vanillaButton) vanillaButton.disabled = disabled;
     }
 }
 
@@ -80,7 +93,11 @@ function purify(text) {
 
 function setIconText(element, iconName, text, size = 'small') {
     element.innerHTML = icon(iconName, size);
-    element.appendChild(document.createTextNode(` ${String(text ?? '')}`));
+    const label = document.createElement('span');
+    label.dataset.userContent = '';
+    if (typeof text === 'function') bindText(label, text);
+    else label.textContent = String(text ?? '');
+    element.appendChild(label);
 }
 
 function getPredominantColor(img) {
@@ -142,6 +159,8 @@ function noHTML(elem) {
 
 
 async function createMod(mod, modListElement) {
+    const enabledState = await window.deltamodBackend.invoke('getModState', [mod.uid]);
+    if (!pageIsActive()) return null;
     let modRow = document.createElement('tr');
 
     modRow.className = 'modrow';
@@ -156,13 +175,13 @@ async function createMod(mod, modListElement) {
     imageContainer.className = 'patch-mod-artwork';
 
     tippy(imageContainer, {
-        content: "Right click to view in library",
+        content: t('main_rightclick', 'Right click to view in library'),
         placement: 'right',
         delay: [100, 0],
         onMount(instance) {
+            bindText(instance.popper.querySelector('.tippy-content'), () => t('main_rightclick', 'Right click to view in library'));
             const box = instance.popper.querySelector('.tippy-box');
-            box.classList.add('calibri');
-            if (box) box.style.border = '3px solid #ffffffff';
+            if (box) { box.classList.add('calibri'); box.style.border = '3px solid #ffffffff'; }
         }
     });
 
@@ -173,7 +192,7 @@ async function createMod(mod, modListElement) {
     img.height = 76;
     img.src = imeta.path;
     img.classList.add('mod-image');
-    img.alt = `${mod.name} cover`;
+    bindText(img, () => t('main_mod_cover', '{0} cover', mod.name), 'alt');
     img.onerror = () => {
         img.onerror = null;
         img.src = window.deltamodBackend.assetUrl('app', 'web/img/mod-placeholder.png');
@@ -181,7 +200,7 @@ async function createMod(mod, modListElement) {
     imageContainer.appendChild(img);
 
     imageContainer.oncontextmenu = async e => {
-        htmlAlert(mod.name,"Do you wish to view this mod in the Library?",[{text:"Yes",resolveWith:'accept'},{text:"No",rejectWith:'close'}]).then(result => {
+        htmlAlert(mod.name, () => (t('main_view_library', 'Do you wish to view this mod in the Library?')), [{text:() => (t('main_yes', 'Yes')),resolveWith:'accept'},{text:() => (t('main_no', 'No')),rejectWith:'close'}]).then(result => {
             if (result === 'accept') {
                 window._pageArguments = { highlightMod: mod.uid };
                 page('allmods');
@@ -195,6 +214,7 @@ async function createMod(mod, modListElement) {
     let titleSpan = document.createElement('span');
     titleSpan.innerText = mod.name;
     titleSpan.className = 'patch-mod-title';
+    titleSpan.dataset.userContent = '';
     if (mod.new) {
         titleSpan = adaptForIconsA(titleSpan);
         titleSpan.style.marginBottom = '0px';
@@ -205,6 +225,7 @@ async function createMod(mod, modListElement) {
 
     let descSpan = document.createElement('span');
     descSpan.className = 'calibri patch-mod-description';
+    descSpan.dataset.userContent = '';
     descSpan.innerText = purifyDescription(mod.description);
     descSpan.id = `moddesc-${mod.uid}`;
     infoContainer.appendChild(descSpan);
@@ -213,15 +234,17 @@ async function createMod(mod, modListElement) {
     flexContnainer.className = 'patch-mod-meta';
     infoContainer.appendChild(flexContnainer);
 
-    const authors = Array.isArray(mod.author) ? mod.author : [mod.author || 'Unknown'];
-    var reducedAuthorStr = authors.slice(0,2).join(', ');
-    if (authors.length > 2) reducedAuthorStr += ` and ${authors.length - 2} more`;
+    const authors = Array.isArray(mod.author) ? mod.author : mod.author ? [mod.author] : [];
+    const authorText = () => {
+        const names = authors.slice(0, 2).join(', ') || t('unknown', 'Unknown');
+        return authors.length > 2 ? `${names} ${t('main_andmore', 'and {0} more', number(authors.length - 2))}` : names;
+    };
     var fontSize = 13;
     let authorSpan = document.createElement('p');
     authorSpan = adaptForIconsA(authorSpan);
     authorSpan.style.margin = '0px';
     authorSpan.className = 'calibri';
-    setIconText(authorSpan, 'attribution', reducedAuthorStr, fontSize + 'px');
+    setIconText(authorSpan, 'attribution', authorText, fontSize + 'px');
     authorSpan.id = `modauthor-${mod.uid}`;
     flexContnainer.appendChild(authorSpan);
 
@@ -229,7 +252,7 @@ async function createMod(mod, modListElement) {
     versionSpan = adaptForIconsA(versionSpan);
     versionSpan.style.margin = '0px';
     versionSpan.className = 'calibri';
-    setIconText(versionSpan, 'change_history', mod.version || "Unknown", fontSize + 'px');
+    setIconText(versionSpan, 'change_history', () => mod.version || t('unknown', 'Unknown'), fontSize + 'px');
     versionSpan.id = `modsize-${mod.uid}`;
     flexContnainer.appendChild(versionSpan);
 
@@ -239,7 +262,7 @@ async function createMod(mod, modListElement) {
         let mergeSpan = document.createElement('p');
         mergeSpan = adaptForIconsA(mergeSpan);
         mergeSpan.className = 'calibri patch-mod-warning';
-        setIconText(mergeSpan, 'warning', "This mod is incompatible with multiple mod support", fontSize + 'px');
+        setIconText(mergeSpan, 'warning', () => t('main_incompatiblemerge', 'This mod is incompatible with multiple mod support'), fontSize + 'px');
         mergeSpan.id = `modmerge-${mod.uid}`;
         infoContainer.appendChild(mergeSpan);
     }
@@ -259,7 +282,7 @@ async function createMod(mod, modListElement) {
         if (variantSelect.children.length != 0) {
             const values = Array.from(variantSelect.options, option => option.value);
             let savedVariant = values.includes(mod._selectedVariant) ? mod._selectedVariant : null;
-            variantSelect.setAttribute('aria-label', `${mod.name}: ${t('allmods_variants', '{0} variants', values.length)}`);
+            bindText(variantSelect, () => `${mod.name}: ${t('allmods_variants', '{0} variants', number(values.length))}`, 'aria-label');
             variantSelect.value = savedVariant ?? values[0];
             infoContainer.appendChild(variantSelect);
             const saveVariant = selectedVariant => configurationWrite(async () => {
@@ -297,9 +320,8 @@ async function createMod(mod, modListElement) {
         let enabled = document.createElement("input");
         enabled.type = 'checkbox';
         enabled.id = `modcheck-${mod.uid}`;
-        enabled.setAttribute('aria-label', `Enable ${mod.name}`);
-        enabled.checked = await window.deltamodBackend.invoke('getModState', [mod.uid]);
-        if (!pageIsActive()) return null;
+        bindText(enabled, () => t('main_enable_mod', 'Enable {0}', mod.name), 'aria-label');
+        enabled.checked = enabledState;
         modRow.classList.toggle('is-enabled', enabled.checked);
         enabled.onchange = async e => {
             if (!pageIsActive()) return;
@@ -316,8 +338,8 @@ async function createMod(mod, modListElement) {
                     enabled.checked = !isEnabled;
                     modRow.classList.toggle('is-enabled', enabled.checked);
                     if (pageIsActive()) {
-                        await htmlAlert(t('refine_save_failed', 'Not saved. Try again.'), String(error?.message || error),
-                            [{ text: t('allmods_ok', 'OK'), resolveWith: 'ok' }]);
+                        await htmlAlert(() => (t('refine_save_failed', 'Not saved. Try again.')), String(error?.message || error),
+                            [{ text: () => (t('allmods_ok', 'OK')), resolveWith: 'ok' }]);
                     }
                 } finally {
                     enabled.disabled = false;
@@ -354,7 +376,7 @@ async function createErroringMods(errors) {
         element.className = "error-holder";
 
         const modId = document.createElement("span");
-        modId.textContent = `Mod ID '${String(err.mod || '')}'`;
+        bindText(modId, () => t('main_mod_id', 'Mod ID ‘{0}’', String(err.mod || '')));
         modId.style.fontSize = '20px';
         modId.style.color = '#888';
 
@@ -370,7 +392,7 @@ async function createErroringMods(errors) {
         selectSpan.className = 'calibri';
         selectSpan.style.marginTop = '18px';
         selectSpan.style.display = 'block';
-        selectSpan.innerText = t('modFail_howtoproceed', "How do you want to proceed?");
+        bindText(selectSpan, () => t('modFail_howtoproceed', 'How do you want to proceed?'));
         
 
         const actionRow = document.createElement("div");
@@ -378,12 +400,12 @@ async function createErroringMods(errors) {
         {
             // Action Row
             const exploreBtn = document.createElement("button");
-            exploreBtn.innerText = t('open_mod_folder', "Open mod folder");
+            bindText(exploreBtn, () => t('open_mod_folder', 'Open mod folder'));
             exploreBtn.onclick = () => window.deltamodBackend.invoke("openModFolder", [err.mod]);
             actionRow.appendChild(exploreBtn);
 
             const deleteBtn = document.createElement("button");
-            deleteBtn.innerText = t('delete_mod', "Delete mod");
+            bindText(deleteBtn, () => t('delete_mod', 'Delete mod'));
             deleteBtn.onclick = () => window.deltamodBackend.invoke("removeMod", [err.mod]);
             actionRow.appendChild(deleteBtn);
         }
@@ -446,15 +468,17 @@ function loadInst(index) {
             rew();
             createErroringMods(errors);
         };
-        errorBanner.children[0].innerText = t(
+        bindText(errorBanner.children[0], () => t(
             'modFail_bannerTitle',
             '{0} mod(s) failed to load',
-            errors.length
-        );
+            number(errors.length)
+        ));
         errorBanner.style.display = "inherit";
     } else errorBanner.style.display = "none";
 
     if (modList.filter(x => !x.isIncompatible).length === 0) {
+        const installedModCount = await window.deltamodBackend.invoke('howManyMods', []);
+        if (!pageIsActive()) return;
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 3;
@@ -471,34 +495,34 @@ function loadInst(index) {
         const copy = document.createElement('div');
         copy.className = 'empty-state-copy';
         const heading = document.createElement('h2');
-        heading.innerText = t('main_empty_title', 'Your patch list is ready');
+        bindText(heading, () => t('main_empty_title', 'Your patch list is ready'));
         const description = document.createElement('p');
-        description.innerText = t(
+        bindText(description, () => t(
             'main_empty_desc',
             'Import a compatible mod package or browse the Mod Shop. Installed mods will appear here before anything touches the game files.'
-        );
+        ));
         copy.append(heading, description);
 
         const incompatibleCount = modList.filter(x => x.isIncompatible).length;
         if (incompatibleCount > 0) {
             const detail = document.createElement('small');
             detail.className = 'empty-state-detail';
-            detail.innerText = `${incompatibleCount} incompatible mod(s) are hidden for this installation.`;
+            bindText(detail, () => window.Localization?.plural
+                ? window.Localization.plural('main_hidden_incompatible', incompatibleCount, '{0} incompatible mods are hidden for this installation.')
+                : t(incompatibleCount === 1 ? 'main_hidden_incompatible_one' : 'main_hidden_incompatible_other', '{0} incompatible mods are hidden for this installation.', number(incompatibleCount)));
             copy.appendChild(detail);
         }
 
-        const installedModCount = await window.deltamodBackend.invoke('howManyMods', []);
-        if (!pageIsActive()) return;
         if (installedModCount == 0) {
             const actions = document.createElement('div');
             actions.className = 'empty-state-actions';
             const shopButton = document.createElement('button');
-            shopButton.innerText = t('browse_mod_shop', 'Browse Mod Shop');
+            bindText(shopButton, () => t('browse_mod_shop', 'Browse Mod Shop'));
             shopButton.onclick = () => page('gamebanana-browse');
             actions.appendChild(shopButton);
             const importButton = document.createElement('button');
             importButton.className = 'secondary-action';
-            importButton.innerText = t('import_mod_package', 'Import mod package');
+            bindText(importButton, () => t('import_mod_package', 'Import mod package'));
             importButton.onclick = () => window.deltamodBackend.invoke('importMod', []);
             actions.appendChild(importButton);
             copy.appendChild(actions);
@@ -509,7 +533,6 @@ function loadInst(index) {
         tr.appendChild(td);
         modListElement.appendChild(tr);
 
-        //document.getElementById('par').innerText = 'Run without patches';
     }
 
     if (window._pageArguments === pageArguments) window._pageArguments = null;
@@ -522,14 +545,13 @@ function loadInst(index) {
     if (pageIsActive()) window.FrontendRefinements.showListError(pageTable, error);
 });
 
-async function patchAndRun() {
+async function patchAndRun(vanilla = false) {
     if (!pageIsActive() || !listReady || pendingWrites.size || hasUnsavedEnabledVariants() || launching) return;
     launching = true;
-    launchButton.disabled = true;
+    syncLaunchButton();
     try {
     var allChecks = Array.from(pageTable.querySelectorAll('input[type="checkbox"]')).filter(cb => cb.id.startsWith('modcheck-'));
-    var selectedMods = allChecks.filter(cb => cb.checked).map(cb => cb.id.replace('modcheck-', ''));
-    console.log('Selected mods:', selectedMods);
+    var selectedMods = vanilla ? [] : allChecks.filter(cb => cb.checked).map(cb => cb.id.replace('modcheck-', ''));
 
     var goOn = true;
     for (let i = 0; i < selectedMods.length; i++) {
@@ -537,9 +559,9 @@ async function patchAndRun() {
         if (!goOn) break;
         if (noMergeMods.map(x => x.uid).includes(modId) && selectedMods.length > 1) {
             await htmlAlert(
-                "Incompatible setting detected",
-                `${noMergeMods.find(x => x.uid === modId).name} is not compatible with multiple mod support, but you have multiple mods selected. Please deselect other mods or this mod to continue.`,
-                [{ text: "Ok", resolveWith: 'ok' }],
+                () => (t('main_incompatible_selection', 'Incompatible setting detected')),
+                () => (t('main_incompatible_merge', '{0} cannot be combined with other mods. Deselect the other mods or this mod to continue.', noMergeMods.find(x => x.uid === modId).name)),
+                [{ text: () => (t('allmods_ok', 'OK')), resolveWith: 'ok' }],
                 'join'
             );
             goOn = false;
@@ -548,15 +570,18 @@ async function patchAndRun() {
     if (!goOn || !pageIsActive()) return;
 
     if (selectedMods.length === 0) {
-        await window.deltamodBackend.invoke('startGame', []);
+        // Empty selection uses the native patch lifecycle: reserve the launch,
+        // restore tracked originals, and only then start the game. Persisted
+        // mod toggles and variants remain the user's choices for their next run.
+        await window.deltamodBackend.invoke('patchAndRun', [[]]);
     }
     else {
         await page('patching');
         await window.deltamodBackend.invoke('patchAndRun', [selectedMods]);
     }
     } catch (error) {
-        await htmlAlert(t('allmods_cant_launch', 'Could not launch the game'), String(error?.message || error),
-            [{ text: t('allmods_ok', 'OK'), resolveWith: 'ok' }]);
+        await htmlAlert(() => (t('allmods_cant_launch', 'Could not launch the game')), String(error?.message || error),
+            [{ text: () => (t('allmods_ok', 'OK')), resolveWith: 'ok' }]);
     } finally {
         launching = false;
         syncLaunchButton();
@@ -564,4 +589,5 @@ async function patchAndRun() {
 }
 
 window.currentPageStack.patchAndRun = patchAndRun;
+window.currentPageStack.playVanilla = () => patchAndRun(true);
 })();

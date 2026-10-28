@@ -82,7 +82,11 @@ fn choose<D: DialogBackend>(dialogs: &D, state: &AppState) -> Result<Value, Stri
     };
     let found = present_files(&selected);
     if found.is_empty() {
-        return Ok(json!({ "ok": false, "message": NO_FILES_MESSAGE }));
+        return Ok(json!({
+            "ok": false,
+            "message": crate::localization::text(NO_FILES_MESSAGE),
+            "messageSource": NO_FILES_MESSAGE
+        }));
     }
     let parent = root.parent().ok_or_else(error::internal)?;
     fs::create_dir_all(parent).map_err(|_| error::internal())?;

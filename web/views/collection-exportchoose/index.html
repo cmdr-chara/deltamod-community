@@ -1,5 +1,5 @@
 <div>
-    <h1>Choose which mods to export</h1>
+    <h1 data-i18n="collection_export_choose_title">Choose which mods to export</h1>
     <table>
         <colgroup>
             <col style="width: calc(100% - 100px);">
@@ -7,8 +7,8 @@
         </colgroup>
         <thead>
             <tr>
-                <th>Mod</th>
-                <th>Export?</th>
+                <th data-i18n="mod">Mod</th>
+                <th data-i18n="export_question">Export?</th>
             </tr>
         </thead>
         <tbody id="mod-list">
@@ -16,8 +16,8 @@
     </table>
     <br>
     <div class="alignRight">
-        <button onclick="page('collections')">Back</button>
-        <button onclick="window.currentPageStack.exportMods()" id="export-btn" disabled>Export</button>
+        <button onclick="page('collections')" data-i18n="back">Back</button>
+        <button onclick="window.currentPageStack.exportMods()" id="export-btn" disabled data-i18n="export">Export</button>
     </div>
 </div>
 JSL

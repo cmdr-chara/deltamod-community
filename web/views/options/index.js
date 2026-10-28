@@ -1,10 +1,23 @@
 (() => {
+
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
 const localize = (key, fallback, ...args) => (
-    window.Localization?.t(key, fallback, ...args) || fallback
+    window.Localization?.t(key, fallback, ...args) ?? String(fallback).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]))
 );
-const localizeKnown = value => (
-    window.Localization?.translateKnownText(value) || value
-);
+const resolveText = value => String((typeof value === 'function' ? value() : value) ?? '');
+let selectSequence = 0;
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
     window._intervals = window._intervals || [];
@@ -22,22 +35,20 @@ function createSettingControlCell() {
 }
 
 async function addCheckboxOption(name, description, flagid, requiresRestart = false, changeHandler = (e) => {}) {
-    name = localizeKnown(name);
-    description = localizeKnown(description);
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
 
     const tdLabel = document.createElement('td');
     const span = document.createElement('span');
     span.className = 'setting-title';
-    span.innerText = name;
+    uiRender(span, () => resolveText(name));
     tdLabel.appendChild(span);
 
     tdLabel.appendChild(document.createElement('br'));
 
     const small = document.createElement('small');
     small.className = 'calibri';
-    small.innerHTML = description;
+    uiRender(small, () => resolveText(description));
     tdLabel.appendChild(small);
 
     if (requiresRestart) {
@@ -47,7 +58,7 @@ async function addCheckboxOption(name, description, flagid, requiresRestart = fa
         restartNote.style.display = 'block';
         restartNote.style.color = '#888';
         restartNote.style.fontSize = 'x-small';
-        restartNote.innerText = "Requires a Deltamod Community restart to take effect.";
+        uiRender(restartNote, () => uiText("Requires a Deltamod Community restart to take effect."));
         tdLabel.appendChild(restartNote);
     }
 
@@ -56,7 +67,7 @@ async function addCheckboxOption(name, description, flagid, requiresRestart = fa
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.id = 'FLAG-' + flagid.toUpperCase();
-    input.setAttribute('aria-label', name);
+    uiRender(input, () => resolveText(name), 'aria-label');
     input.checked = await window.deltamodBackend.invoke('getUniqueFlag', [flagid]);
     let savedChecked = input.checked;
     input.addEventListener('change', async (e) => {
@@ -67,7 +78,7 @@ async function addCheckboxOption(name, description, flagid, requiresRestart = fa
         if (saved) {
             savedChecked = nextChecked;
             try { await changeHandler(nextChecked); }
-            catch (error) { await htmlAlert(name, String(error?.message || error), [{ text: 'OK', resolveWith: 'ok' }]); }
+            catch (error) { await htmlAlert(() => resolveText(name), String(error?.message || error), [{ text: () => uiText("OK"), resolveWith: 'ok' }]); }
         }
     });
     control.appendChild(input);
@@ -86,21 +97,19 @@ function addRangeOption(name, description, {
     unit = '%',
     changeHandler = () => {}
 } = {}) {
-    name = localizeKnown(name);
-    description = localizeKnown(description);
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
 
     const tdLabel = document.createElement('td');
     const title = document.createElement('span');
     title.className = 'setting-title';
-    title.innerText = name;
+    uiRender(title, () => resolveText(name));
     tdLabel.appendChild(title);
     tdLabel.appendChild(document.createElement('br'));
 
     const help = document.createElement('small');
     help.className = 'calibri';
-    help.innerText = description;
+    uiRender(help, () => resolveText(description));
     tdLabel.appendChild(help);
 
     const { td: tdInput, control } = createSettingControlCell();
@@ -115,7 +124,7 @@ function addRangeOption(name, description, {
     input.value = String(value);
     input.className = 'setting-range';
     input.id = 'MUSIC-VOLUME';
-    input.setAttribute('aria-label', name);
+    uiRender(input, () => resolveText(name), 'aria-label');
 
     const output = document.createElement('output');
     output.className = 'setting-range-value';
@@ -123,13 +132,12 @@ function addRangeOption(name, description, {
 
     const updateValue = () => {
         const numericValue = Number(input.value);
-        output.value = `${numericValue}${unit}`;
+        output.value = `${uiNumber(numericValue)}${unit}`;
         output.textContent = output.value;
         changeHandler(numericValue);
     };
     input.addEventListener('input', updateValue);
-    output.value = `${input.value}${unit}`;
-    output.textContent = output.value;
+    uiRender(output, () => `${uiNumber(Number(input.value))}${unit}`);
 
     control.append(input, output);
     tr.append(tdLabel, tdInput);
@@ -151,22 +159,20 @@ window.deltamodBackend.invoke('isDevMode', []).then((devmode) => {
 });
 
 async function addSelectOption(name, description, options, requiresRestart = false, changeHandler = (val) => {}, defaultValue = '') {
-    name = localizeKnown(name);
-    description = localizeKnown(description);
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
 
     const tdLabel = document.createElement('td');
     const span = document.createElement('span');
     span.className = 'setting-title';
-    span.innerText = name;
+    uiRender(span, () => resolveText(name));
     tdLabel.appendChild(span);
 
     tdLabel.appendChild(document.createElement('br'));
 
     const small = document.createElement('small');
     small.className = 'calibri';
-    small.innerHTML = description;
+    uiRender(small, () => resolveText(description));
     tdLabel.appendChild(small);
 
     if (requiresRestart) {
@@ -176,32 +182,32 @@ async function addSelectOption(name, description, options, requiresRestart = fal
         restartNote.style.display = 'block';
         restartNote.style.color = '#888';
         restartNote.style.fontSize = 'x-small';
-        restartNote.innerText = 'Requires a Deltamod Community restart to take effect.';
+        uiRender(restartNote, () => uiText("Requires a Deltamod Community restart to take effect."));
         tdLabel.appendChild(restartNote);
     }
 
     const { td: tdInput, control } = createSettingControlCell();
 
     const select = document.createElement('select');
-    select.id = 'SELECT-' + name.toUpperCase().replace(/[^A-Z0-9]+/g, '-');
+    select.id = `SELECT-OPTION-${++selectSequence}`;
 
     let firstValue = '';
     for (const option of options) {
         const opt = document.createElement('option');
         if (typeof option === 'object' && option !== null) {
             opt.value = option.value ?? option.id ?? option.key ?? '';
-            opt.innerText = localizeKnown(option.label ?? option.name ?? String(opt.value));
+            uiRender(opt, () => resolveText(option.label ?? option.name ?? String(opt.value)));
             if (option.selected) select.value = opt.value;
         } else {
             opt.value = String(option);
-            opt.innerText = localizeKnown(String(option));
+            opt.textContent = String(option);
         }
         if (firstValue === '') firstValue = opt.value;
         select.appendChild(opt);
     }
 
     select.value = defaultValue || firstValue;
-    select.setAttribute('aria-label', name);
+    uiRender(select, () => resolveText(name), 'aria-label');
     let savedValue = select.value;
     select.addEventListener('change', async () => {
         const nextValue = select.value;
@@ -218,10 +224,6 @@ async function addSelectOption(name, description, options, requiresRestart = fal
 }
 
 async function addButton(name, description, click, buttonText, enabled = true, disabledReason = '', colour = '') {
-    name = localizeKnown(name);
-    description = localizeKnown(description);
-    buttonText = localizeKnown(buttonText);
-    disabledReason = localizeKnown(disabledReason);
 
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
@@ -229,7 +231,7 @@ async function addButton(name, description, click, buttonText, enabled = true, d
     const tdLabel = document.createElement('td');
     const span = document.createElement('span');
     span.className = 'setting-title';
-    span.innerText = name;
+    uiRender(span, () => resolveText(name));
     if (colour != '') {
         span.style.color = colour;
     }
@@ -239,21 +241,21 @@ async function addButton(name, description, click, buttonText, enabled = true, d
 
     const small = document.createElement('small');
     small.className = 'calibri';
-    small.innerText = description;
+    uiRender(small, () => resolveText(description));
     tdLabel.appendChild(small);
 
     const { td: tdInput, control } = createSettingControlCell();
 
     const button = document.createElement('button');
-    button.innerText = buttonText;
+    uiRender(button, () => resolveText(buttonText));
     button.addEventListener('click', click);
     control.appendChild(button);
     if (!enabled) {
         tr.classList.add('setting-row-disabled');
         button.disabled = true;
-        if (disabledReason != '') {
-            small.innerText = '(' + disabledReason + ')';
-            button.title = disabledReason;
+        if (resolveText(disabledReason) !== '') {
+            uiRender(small, () => '(' + resolveText(disabledReason) + ')');
+            uiRender(button, () => resolveText(disabledReason), 'title');
         }
     }
 
@@ -269,25 +271,25 @@ if (IS_MAC) document.getElementById('b_mac').style.display = '';
 
 // Credits and a plain-language guide to how Mac support works.
 async function addMacSupportRows() {
-    await addRowHeader(`${icon('favorite', '20px')} ${localize('mac_credits', 'Credits')}`);
+    await addRowHeader(() => localize('mac_credits', 'Credits'), "favorite");
     await addInfoRow(
-        localize('mac_credit_name', 'Mac support by {0}', 'XN'),
-        'X: @XNXITTER',
-        localize('mac_credit_desc', 'Made mod downloading and patching work on macOS.')
+        () => localize('mac_credit_name', 'Mac support by {0}', 'XN'),
+        () => 'X: @XNXITTER',
+        () => localize('mac_credit_desc', 'Made mod downloading and patching work on macOS.')
     );
 
-    await addRowHeader(`${icon('laptop_mac', '20px')} ${localize('mac_how_title', 'How Mac support works')}`);
-    const automatic = localize('mac_automatic', 'Automatic');
+    await addRowHeader(() => localize('mac_how_title', 'How Mac support works'), "laptop_mac");
+    const automatic = () => localize('mac_automatic', 'Automatic');
     const rows = [
-        ['mac_downloads', 'Downloading mods', automatic, 'mac_downloads_desc'],
-        ['mac_copy', 'Your game stays untouched', localize('mac_copy_value', 'Separate copy'), 'mac_copy_desc'],
-        ['reference_files', 'Windows reference files', localize('mac_reference_value', 'Options → Installation'), 'mac_reference_desc'],
-        ['mac_patch', 'Patch & Play', automatic, 'mac_patch_desc'],
-        ['mac_saves', 'Save files', localize('mac_saves_value', 'Shared'), 'mac_saves_desc'],
-        ['mac_unsupported', 'Not supported yet', localize('mac_unsupported_value', '.csx scripts'), 'mac_unsupported_desc']
+        ['mac_downloads', uiText("Downloading mods"), automatic, 'mac_downloads_desc'],
+        ['mac_copy', uiText("Your game stays untouched"), (() => localize('mac_copy_value', 'Separate copy')), 'mac_copy_desc'],
+        ['reference_files', uiText("Windows reference files"), (() => localize('mac_reference_value', 'Options → Installation')), 'mac_reference_desc'],
+        ['mac_patch', uiText("Patch & Play"), automatic, 'mac_patch_desc'],
+        ['mac_saves', uiText("Save files"), (() => localize('mac_saves_value', 'Shared')), 'mac_saves_desc'],
+        ['mac_unsupported', uiText("Not supported yet"), (() => localize('mac_unsupported_value', '.csx scripts')), 'mac_unsupported_desc']
     ];
     for (const [key, fallback, value, descriptionKey] of rows) {
-        await addInfoRow(localize(key, fallback), value, localize(descriptionKey, ''));
+        await addInfoRow(() => localize(key, fallback), () => resolveText(value), () => localize(descriptionKey, ''));
     }
 }
 
@@ -337,43 +339,55 @@ async function addReferenceFileRows() {
     const files = Array.isArray(status?.files) ? status.files : [];
     if (!IS_MAC || (!status?.needed && files.length === 0)) return;
 
-    const summary = summarizeReferenceFiles(files);
-    const description = localize('reference_desc', '');
-    await addRowHeader(`${icon('desktop_windows', '20px')} ${localize('reference_files', 'Windows reference files')}`);
+    const summary = () => summarizeReferenceFiles(files);
+    const description = () => localize('reference_desc', '');
+    await addRowHeader(() => localize('reference_files', 'Windows reference files'), "desktop_windows");
     await addInfoRow(
-        localize('reference_stored', 'Stored files'),
-        files.length ? summary.short : localize('reference_none', 'None yet'),
-        files.length
-            ? `${localize('reference_stored_list', 'Stored: {0}.', summary.long)} ${description}`
-            : description
+        () => localize('reference_stored', 'Stored files'),
+        () => files.length ? summary().short : localize('reference_none', 'None yet'),
+        () => files.length
+            ? `${localize('reference_stored_list', 'Stored: {0}.', summary().long)} ${description()}`
+            : description()
     );
     await addButton(
-        files.length
+        () => files.length
             ? localize('reference_replace', 'Replace Windows reference files')
             : localize('reference_add', 'Add Windows reference files'),
-        localize('reference_choose_desc', ''),
+        () => localize('reference_choose_desc', ''),
         async () => {
             const result = await window.deltamodBackend.invoke('referenceFiles:choose', []);
             if (result && result.ok === false) {
                 await htmlAlert(
-                    localize('reference_not_found', 'No Windows game files found'),
-                    result.message,
-                    [{ text: localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
+                    () => localize('reference_not_found', 'No Windows game files found'),
+                    () => result.messageSource ? uiText(result.messageSource) : result.message,
+                    [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
                 );
             }
             await window.currentPageStack.cat('inst');
         },
-        localize('reference_choose', 'Choose folder')
+        () => localize('reference_choose', 'Choose folder')
     );
 }
 
-async function addRowHeader(name) {
+async function addRowHeader(name, glyph = '') {
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 2;
     td.className = 'rowheader';
-    td.innerHTML = "<div style='display:flex; align-items:center; gap:10px;'>" + name + "</div>"; // make it aligned
+    const content = document.createElement('div');
+    content.style.cssText = 'display:flex; align-items:center; gap:10px;';
+    if (glyph) {
+        const symbol = document.createElement('span');
+        symbol.className = 'material-symbols-outlined';
+        symbol.setAttribute('aria-hidden', 'true');
+        symbol.textContent = glyph;
+        content.appendChild(symbol);
+    }
+    const label = document.createElement('span');
+    uiRender(label, () => resolveText(name));
+    content.appendChild(label);
+    td.appendChild(content);
     tr.appendChild(td);
     table.appendChild(tr);
 }
@@ -396,28 +410,27 @@ function appendPathValue(element, value) {
 }
 
 async function addInfoRow(name, value, description = '', valueKind = 'text') {
-    name = localizeKnown(name);
-    value = valueKind === 'path' ? value : localizeKnown(value);
-    description = localizeKnown(description);
 
     const table = document.querySelector('tbody');
     const tr = document.createElement('tr');
     const label = document.createElement('td');
     const status = document.createElement('td');
-    label.innerText = name;
-    if (description) {
+    const heading = document.createElement('span');
+    uiRender(heading, () => resolveText(name));
+    label.appendChild(heading);
+    if (resolveText(description)) {
         label.appendChild(document.createElement('br'));
         const small = document.createElement('small');
         small.className = 'calibri';
-        small.innerText = description;
+        uiRender(small, () => resolveText(description));
         label.appendChild(small);
     }
     status.className = 'calibri';
     if (valueKind === 'path') {
         tr.className = 'profile-destination-row';
-        appendPathValue(status, value);
+        appendPathValue(status, resolveText(value));
     } else {
-        status.innerText = value;
+        uiRender(status, () => resolveText(value));
     }
     tr.append(label, status);
     table.appendChild(tr);
@@ -456,9 +469,10 @@ async function addLanguageOption(language, selected) {
     const button = document.createElement('button');
     button.type = 'button';
     button.disabled = selected;
-    button.textContent = selected
-        ? localize('language_current', 'Current language')
-        : localize('select', 'Select');
+    uiRender(button, () => {
+        button.disabled = window.Localization?.getLanguage?.() === language.code;
+        return button.disabled ? localize('language_current', 'Current language') : localize('select', 'Select');
+    });
     button.addEventListener('click', async () => {
         window._pageArguments = { cat: 'lang' };
         await window.Localization.setLanguage(language.code, { refreshPage: false });
@@ -471,7 +485,7 @@ async function addLanguageOption(language, selected) {
             b_gen: ['optcat_general', 'General'],
             b_lang: ['optcat_lang', 'Language'],
             b_ui: ['optcat_ui', 'Interface'],
-            b_inst: ['optcat_installation', 'Installation'],
+            b_inst: ['optcat_installation', uiText("Installation")],
             b_data: ['optcat_data', 'Data'],
             b_adv: ['optcat_advanced', 'Advanced'],
             b_gb: ['optcat_gamebanana', 'GameBanana'],
@@ -496,7 +510,7 @@ async function addLanguageOption(language, selected) {
 }
 
 function formatProfileBytes(bytes) {
-    if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown';
+    if (!Number.isFinite(bytes) || bytes < 0) return uiText("Unknown");
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let value = bytes;
     let unit = 0;
@@ -504,7 +518,7 @@ function formatProfileBytes(bytes) {
         value /= 1024;
         unit += 1;
     }
-    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    return `${window.Localization?.number?.(value, { maximumFractionDigits: unit === 0 ? 0 : 1 }) ?? value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 async function runOfficialProfileImport(summary) {
@@ -517,16 +531,16 @@ async function runOfficialProfileImport(summary) {
     const current = document.createElement('small');
     const cancel = document.createElement('button');
 
-    label.innerText = summary.previousImport ? 'Importing Deltamod changes' : 'Importing Deltamod data';
+    uiRender(label, () => summary.previousImport ? uiText("Importing Deltamod changes") : uiText("Importing Deltamod data"));
     status.className = 'profile-import-progress';
     progress.max = Math.max(summary.totalBytes || 1, 1);
     progress.value = 0;
     current.className = 'calibri';
-    current.innerText = 'Preparing a safe copy...';
-    cancel.innerText = 'Cancel import';
+    uiRender(current, () => uiText("Preparing a safe copy..."));
+    uiRender(cancel, () => uiText("Cancel import"));
     cancel.addEventListener('click', async () => {
         cancel.disabled = true;
-        current.innerText = 'Cancelling safely...';
+        uiRender(current, () => uiText("Cancelling safely..."));
         await window.communityAPI.profile.cancel(operationId);
     });
     status.append(progress, current, cancel);
@@ -537,32 +551,32 @@ async function runOfficialProfileImport(summary) {
         if (info.operationId !== operationId) return;
         progress.max = Math.max(info.total || summary.totalBytes || 1, 1);
         progress.value = Math.min(info.completed || 0, progress.max);
-        const phaseLabel = {
-            hash: 'Verifying',
-            copy: 'Copying',
-            commit: 'Saving'
-        }[info.phase] || 'Working';
-        current.innerText = `${phaseLabel}: ${info.currentItem || ''}`;
+        const phaseLabel = () => ({
+            hash: uiText("Verifying"),
+            copy: uiText("Copying"),
+            commit: uiText("Saving")
+        }[info.phase] || uiText("Working"));
+        uiRender(current, () => `${phaseLabel()}: ${info.currentItem || ''}`);
     };
 
     try {
         const result = await window.communityAPI.profile.import(operationId);
         progress.value = progress.max;
-        current.innerText = 'Import complete. The official profile was not changed.';
+        uiRender(current, () => uiText("Import complete. The official profile was not changed."));
         cancel.remove();
         const choice = await htmlAlert(
-            'Deltamod data imported',
-            `Imported ${result.manifest.installations} installation(s), ${result.manifest.mods} mod(s), and ${result.manifest.themes} custom theme(s). Restart Deltamod Community to load them.`,
+            () => uiText("Deltamod data imported"),
+            () => uiText('Imported installations: {0}; mods: {1}; custom themes: {2}. Restart Deltamod Community to load them.', uiNumber(result.manifest.installations), uiNumber(result.manifest.mods), uiNumber(result.manifest.themes)),
             [
-                { text: 'Restart now', resolveWith: 'restart' },
-                { text: 'Restart later', resolveWith: 'later' }
+                { text: () => uiText("Restart now"), resolveWith: 'restart' },
+                { text: () => uiText("Restart later"), resolveWith: 'later' }
             ]
         );
         if (choice === 'restart') await window.deltamodBackend.invoke('restartCommunity', []);
     } catch (error) {
-        current.innerText = error.code === 'IMPORT_CANCELLED'
-            ? 'Import cancelled. Community staging data was removed.'
-            : `Import failed: ${error.message || error}`;
+        uiRender(current, () => error.code === 'IMPORT_CANCELLED'
+            ? uiText("Import cancelled. Community staging data was removed.")
+            : uiText("Import failed: {0}", error.message || error));
         cancel.remove();
     }
 }
@@ -612,23 +626,23 @@ window.currentPageStack.cat = async function(cat) {
     try {
     switch (cat) {
         case 'gen':            
-            await addButton("Open mod folder", "Open the folder where your mods are stored.", async () => {
+            await addButton(() => uiText("Open mod folder"), () => uiText("Open the folder where your mods are stored."), async () => {
                 await window.deltamodBackend.invoke('openSysFolder', ['mods']);
-            }, "Open");
-            await addCheckboxOption("Prompt controller mode when available", "When enabled, you will be asked to activate Controller Mode when a compatible controller is attached. Currently only compatible with DualSense.", 'CONTROLLER');
+            }, () => uiText("Open"));
+            await addCheckboxOption(() => uiText("Prompt controller mode when available"), () => uiText("When enabled, you will be asked to activate Controller Mode when a compatible controller is attached. Currently only compatible with DualSense."), 'CONTROLLER');
             await addCheckboxOption(
-                localize('community_hash_title', "Enable hash checks"),
-                localize('community_hash_desc', "Checks mod hashes for compatibility. This may make scans slower."),
+                () => localize('community_hash_title', "Enable hash checks"),
+                () => localize('community_hash_desc', "Checks mod hashes for compatibility. This may make scans slower."),
                 'hashchecks',
                 false
             );
             break;
         case 'lang': {
-            await addRowHeader(`${icon('language', '20px')} ${localize('optcat_lang', 'Language')}`);
+            await addRowHeader(() => localize('optcat_lang', 'Language'), "language");
             await addInfoRow(
-                localize('language_current', 'Current language'),
-                window.Localization.getLanguage().toUpperCase(),
-                localize(
+                () => localize('language_current', 'Current language'),
+                () => window.Localization.getLanguage().toUpperCase(),
+                () => localize(
                     'language_help',
                     'Choose the language used by Deltamod Community. New Community features may fall back to English until their translations are updated.'
                 )
@@ -642,7 +656,7 @@ window.currentPageStack.cat = async function(cat) {
             break;
         }
         case 'ui':
-            await addCheckboxOption("Enable music in menus", "Plays background music in the main menus.", 'audio', false, async (enabled) => {
+            await addCheckboxOption(() => uiText("Enable music in menus"), () => uiText("Plays background music in the main menus."), 'audio', false, async (enabled) => {
                 if (enabled) {
                     var a = new Audio();
                     a.src = 'audio/orch1.mp3';
@@ -661,14 +675,14 @@ window.currentPageStack.cat = async function(cat) {
                 }
             });
             addRangeOption(
-                localize('community_music_volume_title', 'Music volume'),
-                localize('community_music_volume_desc', 'Adjusts the volume of menu and theme music.'),
+                () => localize('community_music_volume_title', 'Music volume'),
+                () => localize('community_music_volume_desc', 'Adjusts the volume of menu and theme music.'),
                 {
                     value: Math.round((window.DeltamodAudioSettings?.getVolume() ?? 0.5) * 100),
                     changeHandler: value => window.DeltamodAudioSettings?.setVolume(value / 100)
                 }
             );
-            await addCheckboxOption("Enable SFX in menus", "Plays sound effects in the main menus.", 'sfx', false, (enabled) => {
+            await addCheckboxOption(() => uiText("Enable SFX in menus"), () => uiText("Plays sound effects in the main menus."), 'sfx', false, (enabled) => {
                 if (enabled) {
                     var a = new Audio();
                     a.src = 'audio/orch1.mp3';
@@ -677,8 +691,8 @@ window.currentPageStack.cat = async function(cat) {
                 }
             });
             await addCheckboxOption(
-                localize('community_dynamic_music_title', "Enable dynamic music"),
-                localize(
+                () => localize('community_dynamic_music_title', "Enable dynamic music"),
+                () => localize(
                     'community_dynamic_music_desc',
                     "Enables dynamic background music that changes based on the page. If unchecked, always plays the default music for your theme."
                 ),
@@ -687,20 +701,20 @@ window.currentPageStack.cat = async function(cat) {
             );
 
             await addSelectOption(
-                localize('community_alert_alignment', "Alert alignment"),
-                "Choose how alerts are positioned on the screen.",
+                () => localize('community_alert_alignment', "Alert alignment"),
+                () => uiText("Choose how alerts are positioned on the screen."),
                 [
-                    { value: "Top", label: "Top" },
-                    { value: "Center", label: "Center" },
-                    { value: "Bottom", label: "Bottom" },
-                    { value: "Separate", label: "Separate" }
+                    { value: "Top", label: () => uiText("Top") },
+                    { value: "Center", label: () => uiText("Center") },
+                    { value: "Bottom", label: () => uiText("Bottom") },
+                    { value: "Separate", label: () => uiText("Separate") }
                 ],
                 true,
                 async (val) => {
                     var oldVal = localStorage.getItem('alertAlignment');
                     localStorage.setItem('alertAlignment', val);
                     await reapplyHAStyles();
-                    var response = await htmlAlert("Modified", "This is how your alerts look when aligned as " + val + '. Keep it this way?', [{ text: "Yes", resolveWith: 'Y' }, { text: "No, revert to " + oldVal, resolveWith: 'N' }]);
+                    var response = await htmlAlert(() => uiText("Modified"), () => uiText('Alerts are aligned to {0}. Keep this setting?', uiText(val)), [{ text: () => uiText("Yes"), resolveWith: 'Y' }, { text: () => uiText('No, restore {0}', uiText(oldVal || 'Top')), resolveWith: 'N' }]);
                     if (response == 'N') {
                         localStorage.setItem('alertAlignment', oldVal);
                         await reapplyHAStyles();
@@ -711,25 +725,25 @@ window.currentPageStack.cat = async function(cat) {
                 localStorage.getItem('alertAlignment') || 'Top'
             );
 
-            await addButton("Select a theme", "Opens the theme selection menu.", async () => {
+            await addButton(() => uiText("Select a theme"), () => uiText("Opens the theme selection menu."), async () => {
                 page('themesel');
-            }, "Open");
+            }, () => uiText("Open"));
 
             const seasonalModeSelect = await addSelectOption(
-                localize('community_seasonal_title', 'Seasonal details'),
-                localize(
+                () => localize('community_seasonal_title', 'Seasonal details'),
+                () => localize(
                     'community_seasonal_desc',
                     'Adds calendar-based pixel details without replacing the active theme. Choose an event to preview it.'
                 ),
                 [
-                    { value: 'auto', label: localize('seasonal_auto', 'Automatic') },
-                    { value: 'off', label: localize('seasonal_off', 'Off') },
-                    { value: 'womens-health', label: localize('seasonal_womens_health', "Women's Health") },
-                    { value: 'mens-health', label: localize('seasonal_mens_health', "Men's Health") },
-                    { value: 'easter', label: localize('seasonal_easter', 'Easter') },
-                    { value: 'halloween', label: localize('seasonal_halloween', 'Halloween') },
-                    { value: 'christmas', label: localize('seasonal_christmas', 'Christmas') },
-                    { value: 'new-year', label: localize('seasonal_new_year', 'New Year') }
+                    { value: 'auto', label: () => localize('seasonal_auto', 'Automatic') },
+                    { value: 'off', label: () => localize('seasonal_off', 'Off') },
+                    { value: 'womens-health', label: () => localize('seasonal_womens_health', "Women's Health") },
+                    { value: 'mens-health', label: () => localize('seasonal_mens_health', "Men's Health") },
+                    { value: 'easter', label: () => localize('seasonal_easter', 'Easter') },
+                    { value: 'halloween', label: () => localize('seasonal_halloween', 'Halloween') },
+                    { value: 'christmas', label: () => localize('seasonal_christmas', 'Christmas') },
+                    { value: 'new-year', label: () => localize('seasonal_new_year', 'New Year') }
                 ],
                 false,
                 value => window.SeasonalEvents?.setMode(value),
@@ -745,152 +759,152 @@ window.currentPageStack.cat = async function(cat) {
             var isSteam = await window.deltamodBackend.invoke('isCurrentIndexSteam', []);
             const canDisconnectSteam = window.deltamodBackend.isCommandAvailable('removeSteamIntegration');
 
-            await addButton("Disconnect Steam", "Stops launching the current Community installation through Steam.", async () => {
+            await addButton(() => uiText("Disconnect Steam"), () => uiText("Stops launching the current Community installation through Steam."), async () => {
                 const removed = await window.deltamodBackend.invoke('removeSteamIntegration', []);
                 if (removed) await window.currentPageStack.cat('inst');
-            }, "Disconnect", isSteam && canDisconnectSteam, canDisconnectSteam
-                ? "Only available for games imported from Steam."
-                : "Steam disconnection is unavailable in this app build.");
+            }, () => uiText("Disconnect"), isSteam && canDisconnectSteam, () => canDisconnectSteam
+                ? uiText("Only available for games imported from Steam.")
+                : uiText("Steam disconnection is unavailable in this app build."));
 
-            await addButton("Open the Install Manager", "Opens the install manager menu, which allows you to delete/create installations and create shortcuts for them.", async () => {
+            await addButton(() => uiText("Open the Install Manager"), () => uiText("Opens the install manager menu, which allows you to delete/create installations and create shortcuts for them."), async () => {
                 page('installmanager');
-            }, "Open");
+            }, () => uiText("Open"));
 
             await addReferenceFileRows();
             break;
         case 'data': {
-            await addRowHeader(`${icon('database', '20px')} Deltamod compatibility`);
+            await addRowHeader(() => uiText("Deltamod compatibility"), "database");
             const summary = await window.communityAPI.profile.summary();
             if (!summary.exists) {
                 await addInfoRow(
-                    'Official Deltamod profile',
-                    'Not found',
-                    'Deltamod Community uses separate storage and will not alter official Deltamod data.'
+                    () => uiText("Official Deltamod profile"),
+                    () => uiText("Not found"),
+                    () => uiText("Deltamod Community uses separate storage and will not alter official Deltamod data.")
                 );
                 break;
             }
 
-            await addInfoRow('Detected Deltamod version', summary.version || 'Unknown');
-            await addInfoRow('Installations', String(summary.installations || 0));
-            await addInfoRow('Installed mods', String(summary.mods || 0));
-            await addInfoRow('Custom themes', String(summary.themes || 0));
-            await addInfoRow('Required copy space', formatProfileBytes(summary.totalBytes));
-            await addInfoRow('Available destination space', formatProfileBytes(summary.availableBytes));
-            await addInfoRow('Community destination', summary.destinationRoot, '', 'path');
+            await addInfoRow(() => uiText("Detected Deltamod version"), () => summary.version || uiText("Unknown"));
+            await addInfoRow(() => uiText("Installations"), () => uiNumber(summary.installations || 0));
+            await addInfoRow(() => uiText("Installed mods"), () => uiNumber(summary.mods || 0));
+            await addInfoRow(() => uiText("Custom themes"), () => uiNumber(summary.themes || 0));
+            await addInfoRow(() => uiText("Required copy space"), () => formatProfileBytes(summary.totalBytes));
+            await addInfoRow(() => uiText("Available destination space"), () => formatProfileBytes(summary.availableBytes));
+            await addInfoRow(() => uiText("Community destination"), () => summary.destinationRoot, () => '', 'path');
 
             if (summary.previousImport) {
-                await addInfoRow('Last import', new Date(summary.previousImport.importedAt).toLocaleString());
+                await addInfoRow(() => uiText("Last import"), () => window.Localization?.date?.(summary.previousImport.importedAt, { dateStyle: 'medium', timeStyle: 'short' }) ?? new Date(summary.previousImport.importedAt).toLocaleString());
             }
 
             await addButton(
-                summary.previousImport ? 'Import changes from Deltamod' : 'Import from Deltamod',
-                'Creates a validated copy in Community storage. Official Deltamod remains unchanged and usable.',
+                () => summary.previousImport ? uiText("Import changes from Deltamod") : uiText("Import from Deltamod"),
+                () => uiText("Creates a validated copy in Community storage. Official Deltamod remains unchanged and usable."),
                 () => runOfficialProfileImport(summary),
-                summary.previousImport ? 'Import changes' : 'Import data',
+                () => summary.previousImport ? uiText("Import changes") : uiText("Import data"),
                 summary.canImport,
-                'Not enough free space for a safe copy.'
+                () => uiText("Not enough free space for a safe copy.")
             );
             break;
         }
         case 'adv':
-            await addRowHeader(icon('warning', '20px') + ' ' + "Please only change these settings if you know what they do.");
+            await addRowHeader(() => uiText("Please only change these settings if you know what they do."), 'warning');
             let hashButton;
-            hashButton = await addButton("Precalculate game hashes", "Builds the Community-owned cache used by advanced mod checks. Game files are not modified.", async () => {
+            hashButton = await addButton(() => uiText("Precalculate game hashes"), () => uiText("Builds the Community-owned cache used by advanced mod checks. Game files are not modified."), async () => {
                 hashButton.disabled = true;
-                hashButton.innerText = 'Scanning…';
+                uiRender(hashButton, () => uiText("Scanning…"));
                 window.currentPageStack.hashProgress = progress => {
                     const completed = Number(progress.completed) || 0;
                     const total = Number(progress.total) || 0;
-                    hashButton.innerText = total > 0
-                        ? `Hashing ${completed}/${total}`
-                        : 'Hashing…';
+                    uiRender(hashButton, () => total > 0
+                        ? uiText("Hashing {0}/{1}", uiNumber(completed), uiNumber(total))
+                        : uiText("Hashing…"));
                 };
                 try {
                     const result = await window.deltamodBackend.invoke('precalcGameHashes', []);
-                    await htmlAlert("Hash cache ready", `Cached ${result.fileCount} game file(s).`, [{text: "OK", resolveWith:''}]);
+                    await htmlAlert(() => uiText("Hash cache ready"), () => uiText('Cached game files: {0}.', uiNumber(result.fileCount)), [{text: () => uiText("OK"), resolveWith:''}]);
                 } catch (error) {
-                    await htmlAlert("Hashing failed", error?.message || 'The game hash cache could not be built.', [{text: "OK", resolveWith:''}]);
+                    await htmlAlert(() => uiText("Hashing failed"), () => error?.messageSource ? uiText(error.messageSource) : error?.message || uiText("The game hash cache could not be built."), [{text: () => uiText("OK"), resolveWith:''}]);
                 } finally {
                     delete window.currentPageStack.hashProgress;
                     hashButton.disabled = false;
-                    hashButton.innerText = 'Build cache';
+                    uiRender(hashButton, () => uiText("Build cache"));
                 }
-            }, "Build cache");
+            }, () => uiText("Build cache"));
 
             if (window.deltamodBackend.isCommandAvailable('storage:getUsage')) {
                 const usage = await window.deltamodBackend.invoke('storage:getUsage', []);
-                await addInfoRow('Provider cache', formatProfileBytes(usage.cacheBytes),
-                    'Re-downloadable catalogue metadata and images.');
-                await addInfoRow('Recovery data', formatProfileBytes(usage.recoveryBytes),
-                    'Protected rollback generations; Clear cache never removes these files.');
-                await addInfoRow('Lifecycle journals', formatProfileBytes(usage.journalBytes),
-                    'Transactional records used for deterministic crash recovery.');
+                await addInfoRow(() => uiText("Provider cache"), () => formatProfileBytes(usage.cacheBytes),
+                    () => uiText("Re-downloadable catalogue metadata and images."));
+                await addInfoRow(() => uiText("Recovery data"), () => formatProfileBytes(usage.recoveryBytes),
+                    () => uiText("Protected rollback generations; Clear cache never removes these files."));
+                await addInfoRow(() => uiText("Lifecycle journals"), () => formatProfileBytes(usage.journalBytes),
+                    () => uiText("Transactional records used for deterministic crash recovery."));
             }
             await addButton(
-                'Clear provider cache',
-                'Removes only re-downloadable provider catalogue data. Recovery generations and journals are preserved.',
+                () => uiText("Clear provider cache"),
+                () => uiText("Removes only re-downloadable provider catalogue data. Recovery generations and journals are preserved."),
                 async () => {
                     const result = await window.deltamodBackend.invoke('storage:clearCache', []);
                     await htmlAlert(
-                        'Cache cleared',
-                        `Removed ${formatProfileBytes(result.removedBytes)}. Recovery data was not changed.`,
-                        [{ text: 'OK', resolveWith: '' }]
+                        () => uiText("Cache cleared"),
+                        () => uiText("Removed {0}. Recovery data was not changed.", formatProfileBytes(result.removedBytes)),
+                        [{ text: () => uiText("OK"), resolveWith: '' }]
                     );
                 },
-                'Clear cache',
+                () => uiText("Clear cache"),
                 window.deltamodBackend.isCommandAvailable('storage:clearCache'),
-                'Cache cleanup is unavailable in this app build.'
+                () => uiText("Cache cleanup is unavailable in this app build.")
             );
             await addButton(
-                'Delete recovery data',
-                'Removes only completed recovery generations that are not active, pinned, journal-referenced, among the latest three, or the sole viable recovery for an installation.',
+                () => uiText("Delete recovery data"),
+                () => uiText("Removes only completed recovery generations that are not active, pinned, journal-referenced, among the latest three, or the sole viable recovery for an installation."),
                 async () => {
                     const choice = await htmlAlert(
-                        'Delete recovery data?',
-                        'Older removable rollback generations will be permanently deleted. Active and required recovery data will be preserved.',
+                        () => uiText("Delete recovery data?"),
+                        () => uiText("Older removable rollback generations will be permanently deleted. Active and required recovery data will be preserved."),
                         [
-                            { text: 'Delete removable data', resolveWith: 'delete' },
-                            { text: 'Cancel', resolveWith: 'cancel' }
+                            { text: () => uiText("Delete removable data"), resolveWith: 'delete' },
+                            { text: () => uiText("Cancel"), resolveWith: 'cancel' }
                         ],
                         'error'
                     );
                     if (choice !== 'delete') return;
                     const result = await window.deltamodBackend.invoke('storage:deleteRecoveryData', []);
                     await htmlAlert(
-                        'Recovery cleanup complete',
-                        `Removed ${result.removedGenerations} generation(s), freeing ${formatProfileBytes(result.removedBytes)}. ${result.protectedGenerations} protected generation(s) remain.`,
-                        [{ text: 'OK', resolveWith: '' }]
+                        () => uiText("Recovery cleanup complete"),
+                        () => uiText('Removed recovery generations: {0}; space freed: {1}; protected generations remaining: {2}.', uiNumber(result.removedGenerations), formatProfileBytes(result.removedBytes), uiNumber(result.protectedGenerations)),
+                        [{ text: () => uiText("OK"), resolveWith: '' }]
                     );
                     window._pageArguments = { cat: 'adv' };
                     page('options');
                 },
-                'Delete recovery data',
+                () => uiText("Delete recovery data"),
                 window.deltamodBackend.isCommandAvailable('storage:deleteRecoveryData'),
-                'Recovery cleanup is unavailable in this app build.',
+                () => uiText("Recovery cleanup is unavailable in this app build."),
                 'red'
             );
 
             await addButton(
-                "DeltamodCLI releases",
-                "Opens the separate DeltamodCLI project. Community does not automatically execute downloaded installer scripts.",
+                () => uiText("DeltamodCLI releases"),
+                () => uiText("Opens the separate DeltamodCLI project. Community does not automatically execute downloaded installer scripts."),
                 async () => window.deltamodBackend.invoke('installDeltamodCLI', []),
-                "View releases",
+                () => uiText("View releases"),
                 window.deltamodBackend.isCommandAvailable('installDeltamodCLI'),
-                "DeltamodCLI release launching is unavailable in this app build."
+                () => uiText("DeltamodCLI release launching is unavailable in this app build.")
             );
 
             break;
         // dev isnt keyed and is always in english
         case "dev":
-            await addRowHeader(icon('warning', '20px') + ' ' + "These options are for developers only.");
-            await addButton('Open flag database (DEV-ONLY)', 'Opens the database holding flags.', async () => {
+            await addRowHeader(() => uiText("These options are for developers only."), 'warning');
+            await addButton(() => uiText("Open flag database (DEV-ONLY)"), () => uiText("Opens the database holding flags."), async () => {
                 await window.deltamodBackend.invoke('openFlagDatabase', []);
-            }, "Open", window.deltamodBackend.isCommandAvailable('openFlagDatabase'),
-                'Flag database launching is unavailable in this app build.');
-            await addButton('Force controller mode (DEV-ONLY)', 'Forces Controller Mode on, regardless of controller detection status', async () => {
+            }, () => uiText("Open"), window.deltamodBackend.isCommandAvailable('openFlagDatabase'),
+                () => uiText("Flag database launching is unavailable in this app build."));
+            await addButton(() => uiText("Force controller mode (DEV-ONLY)"), () => uiText("Forces Controller Mode on, regardless of controller detection status"), async () => {
                 await window.deltamodBackend.invoke('cmode-on', []);
-            }, "Open", window.deltamodBackend.isCommandAvailable('cmode-on'),
-                'Controller mode is unavailable in this app build.');
+            }, () => uiText("Open"), window.deltamodBackend.isCommandAvailable('cmode-on'),
+                () => uiText("Controller mode is unavailable in this app build."));
             break;
         case 'gb':
             await invoke('eraseGamebananaCache', []);
@@ -904,7 +918,9 @@ window.currentPageStack.cat = async function(cat) {
 
             var td = document.createElement('td');
             td.colSpan = 2;
-            td.innerHTML = "Loading...";
+            const accountLoading = document.createElement('span');
+            uiRender(accountLoading, () => uiText('Loading...'));
+            td.appendChild(accountLoading);
 
             var gamebananaUserinfo = await Promise.race([
                 window.deltamodBackend.invokeOptional(
@@ -934,10 +950,10 @@ window.currentPageStack.cat = async function(cat) {
             img.style.borderRadius = '5px';
             var span = document.createElement('span');
             flexdiv.appendChild(span);
-            span.innerText = `Currently logged in as ${gamebananaUserinfo._sName}`;
+            uiRender(span, () => uiText("Currently logged in as {0}", gamebananaUserinfo._sName));
 
             if (gamebananaUserinfo._sName == undefined) {
-                span.innerText = "You aren't logged in to GameBanana.";
+                uiRender(span, () => uiText("You aren't logged in to GameBanana."));
                 gamebananaUserinfo = { loggedIn: false };
             }
             else {
@@ -947,14 +963,14 @@ window.currentPageStack.cat = async function(cat) {
             tr.appendChild(td);
 
             if (gamebananaUserinfo.loggedIn && gamebananaUserinfo._sName != undefined) {
-                await addButton("Logout", "Removes your GameBanana account from Deltamod.", async () => {
+                await addButton(() => uiText("Logout"), () => uiText("Removes your GameBanana account from Deltamod."), async () => {
                     await window.deltamodBackend.invoke('logoutGamebanana', []);
                     window._pageArguments = {cat: 'gb'};
                     page('options');
-                }, "Logout", gamebananaUserinfo.loggedIn, "You aren't logged in to GameBanana.", '');
+                }, () => uiText("Logout"), gamebananaUserinfo.loggedIn, () => uiText("You aren't logged in to GameBanana."), '');
             }
             else {
-                await addButton("Login", "Adds a GameBanana account to Deltamod.", async () => {
+                await addButton(() => uiText("Login"), () => uiText("Adds a GameBanana account to Deltamod."), async () => {
                     try {
                         const loggedIn = await window.deltamodBackend.invoke('loginGamebanana', []);
                         if (loggedIn) {
@@ -963,56 +979,56 @@ window.currentPageStack.cat = async function(cat) {
                         }
                     } catch (error) {
                         await htmlAlert(
-                            'GameBanana login failed',
-                            error?.message || 'GameBanana could not verify the signed-in account.',
-                            [{ text: 'OK', resolveWith: 'ok' }],
+                            () => uiText("GameBanana login failed"),
+                            () => error?.messageSource ? uiText(error.messageSource) : error?.message || uiText("GameBanana could not verify the signed-in account."),
+                            [{ text: () => uiText("OK"), resolveWith: 'ok' }],
                             'error'
                         );
                     }
-                }, "Login", !gamebananaUserinfo.loggedIn
+                }, () => uiText("Login"), !gamebananaUserinfo.loggedIn
                     && window.deltamodBackend.isCommandAvailable('loginGamebanana'),
-                window.deltamodBackend.isCommandAvailable('loginGamebanana')
-                    ? "You are already logged in to GameBanana."
-                    : "GameBanana login is unavailable in this app build.", '');
+                () => window.deltamodBackend.isCommandAvailable('loginGamebanana')
+                    ? uiText("You are already logged in to GameBanana.")
+                    : uiText("GameBanana login is unavailable in this app build."), '');
             }
             break;
         case 'nexus': {
-            await addRowHeader(`${icon('key', '20px')} Nexus Mods`);
+            await addRowHeader(() => uiText("Nexus Mods"), "key");
             const status = await window.communityAPI.modSources.nexusStatus();
             if (status.connected) {
-                await addInfoRow('Connection', `Connected as ${status.name}`);
-                await addInfoRow('Authentication', 'Nexus Mods OAuth 2.0');
+                await addInfoRow(() => uiText("Connection"), () => uiText("Connected as {0}", status.nameFallback ? uiText('Nexus Mods user') : status.name));
+                await addInfoRow(() => uiText("Authentication"), () => 'Nexus Mods OAuth 2.0');
                 await addInfoRow(
-                    'Download access',
-                    status.premium ? 'Premium API downloads available' : 'Website confirmation may be required',
-                    status.premium
-                        ? 'Compatible archives can be downloaded and imported directly.'
-                        : 'Nexus Mods restricts direct API downloads for non-premium accounts.'
+                    () => uiText("Download access"),
+                    () => status.premium ? uiText("Premium API downloads available") : uiText("Website confirmation may be required"),
+                    () => status.premium
+                        ? uiText("Compatible archives can be downloaded and imported directly.")
+                        : uiText("Nexus Mods restricts direct API downloads for non-premium accounts.")
                 );
                 await addButton(
-                    'Disconnect Nexus Mods',
-                    'Removes the saved Nexus Mods OAuth authorization from this device.',
+                    () => uiText("Disconnect Nexus Mods"),
+                    () => uiText("Removes the saved Nexus Mods OAuth authorization from this device."),
                     async () => {
                         await window.communityAPI.modSources.clearNexusKey();
                         window._pageArguments = { cat: 'nexus' };
                         page('options');
                     },
-                    'Disconnect'
+                    () => uiText("Disconnect")
                 );
             } else {
                 const registrationPending = status.code === 'NEXUS_SSO_NOT_REGISTERED'
                     || status.ssoAvailable !== true;
                 const signInPending = status.ssoPending === true;
                 await addInfoRow(
-                    'Connection',
-                    signInPending
-                        ? 'Sign-in pending'
-                        : registrationPending ? 'Awaiting Nexus registration' : 'Not connected',
-                    signInPending
-                        ? 'Finish authorization in the Nexus Mods browser window, or cancel the pending sign-in below.'
+                    () => uiText("Connection"),
+                    () => signInPending
+                        ? uiText("Sign-in pending")
+                        : registrationPending ? uiText("Awaiting Nexus registration") : uiText("Not connected"),
+                    () => signInPending
+                        ? uiText("Finish authorization in the Nexus Mods browser window, or cancel the pending sign-in below.")
                         : registrationPending
-                            ? 'Nexus Mods must issue the OAuth client ID before Community can offer account sign-in.'
-                            : (status.error || 'Connect a Nexus Mods account with OAuth to browse its catalogue.')
+                            ? uiText("Nexus Mods must issue the OAuth client ID before Community can offer account sign-in.")
+                            : (status.errorSource ? uiText(status.errorSource) : status.error || uiText("Connect a Nexus Mods account with OAuth to browse its catalogue."))
                 );
                 if (status.ssoAvailable === true) {
                     let signingIn = false;
@@ -1023,7 +1039,7 @@ window.currentPageStack.cat = async function(cat) {
                             return;
                         }
                         signingIn = true;
-                        ssoButton.innerText = 'Cancel sign-in';
+                        uiRender(ssoButton, () => uiText("Cancel sign-in"));
                         try {
                             await window.communityAPI.modSources.startNexusSso();
                             window._pageArguments = { cat: 'nexus' };
@@ -1031,29 +1047,29 @@ window.currentPageStack.cat = async function(cat) {
                         } catch (error) {
                             if (error?.code !== 'NEXUS_SSO_CANCELLED') {
                                 await htmlAlert(
-                                    'Nexus Mods sign-in failed',
-                                    error?.message || 'The Nexus Mods account could not be connected.',
-                                    [{ text: 'OK', resolveWith: 'ok' }],
+                                    () => uiText("Nexus Mods sign-in failed"),
+                                    () => error?.messageSource ? uiText(error.messageSource) : error?.message || uiText("The Nexus Mods account could not be connected."),
+                                    [{ text: () => uiText("OK"), resolveWith: 'ok' }],
                                     'error'
                                 );
                             }
                         } finally {
                             signingIn = false;
-                            ssoButton.innerText = 'Sign in';
+                            uiRender(ssoButton, () => uiText("Sign in"));
                         }
                     };
                     ssoButton = await addButton(
-                        'Sign in with Nexus Mods',
-                        'Opens Nexus Mods in your browser and returns through Community’s fixed local callback.',
+                        () => uiText("Sign in with Nexus Mods"),
+                        () => uiText("Opens Nexus Mods in your browser and returns through Community’s fixed local callback."),
                         toggleSso,
-                        status.ssoPending ? 'Cancel sign-in' : 'Sign in'
+                        () => status.ssoPending ? uiText("Cancel sign-in") : uiText("Sign in")
                     );
                     signingIn = Boolean(status.ssoPending);
                 } else if (!signInPending) {
                     await addInfoRow(
-                        'OAuth 2.0',
-                        'Unavailable',
-                        'This integration is waiting for the Nexus-issued OAuth client ID. No credential can be entered manually.'
+                        () => 'OAuth 2.0',
+                        () => uiText("Unavailable"),
+                        () => uiText("This integration is waiting for the Nexus-issued OAuth client ID. No credential can be entered manually.")
                     );
                 }
             }
@@ -1066,7 +1082,7 @@ window.currentPageStack.cat = async function(cat) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
         cell.colSpan = 2;
-        cell.innerText = `This options category could not be loaded: ${String(error?.message || error)}`;
+        uiRender(cell, () => uiText("This options category could not be loaded: {0}", String(error?.message || error)));
         row.appendChild(cell);
         tbody.appendChild(row);
     } finally {

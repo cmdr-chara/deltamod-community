@@ -48,6 +48,7 @@
     { "path": "tests/linux-webkit-startup.test.js", "layer": "compatibility", "runtime": "shared", "retained": true },
     { "path": "tests/local-mod-import.test.js", "layer": "lifecycle", "runtime": "shared", "retained": true },
     { "path": "tests/localization-catalogs.test.js", "layer": "renderer", "runtime": "shared", "retained": true },
+    { "path": "tests/localization-runtime.test.js", "layer": "renderer", "runtime": "shared", "retained": true },
     { "path": "tests/mod-sources.test.js", "layer": "provider", "runtime": "shared", "retained": true },
     { "path": "tests/motion-system.test.js", "layer": "renderer", "runtime": "shared", "retained": true },
     { "path": "tests/native-archive-security.test.js", "layer": "security", "runtime": "shared", "retained": true },
@@ -83,6 +84,8 @@
     { "path": "tests/updater-manifest.test.js", "layer": "security", "runtime": "shared", "retained": true },
     { "path": "tests/versioning.test.js", "layer": "domain", "runtime": "shared", "retained": true },
     { "path": "tests/e2e/chara-replay.spec.js", "layer": "renderer", "runtime": "shared", "retained": true },
+    { "path": "tests/e2e/community-social-launch.spec.js", "layer": "renderer", "runtime": "shared", "retained": true },
+    { "path": "tests/e2e/localization-layout.spec.js", "layer": "renderer", "runtime": "shared", "retained": true },
     { "path": "tests/e2e/tauri-localization.spec.js", "layer": "shell-tauri", "runtime": "tauri", "retained": true },
     { "path": "tests/e2e/tauri-themes.spec.js", "layer": "shell-tauri", "runtime": "tauri", "retained": true }
   ]
