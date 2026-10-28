@@ -1,3 +1,19 @@
+# Deltamod Community 2.1.3
+
+Released 2026-10-28.
+
+## Changes
+
+- ci: recover unpublished secure 2.1.1 release through signed pipeline (`af989e6`).
+- ci: prepare isolated development snapshot for localization validation (`4d4ff49`).
+- ci: supply existing media and native fixtures for offline validation (`fa5917b`).
+- feat: add original social details, safe vanilla launch and 17-language UI (`56909db`).
+- fix: preserve cached localization metadata and finish regression checks (`1ae6d02`).
+- fix: polish localization, language picker and Knight rendering (`7ca2ef3`).
+- feat: social details, safe vanilla launch and localization [stable-release] (`8777ca7`).
+- ci: publish Windows and Linux packages while macOS builds are paused (`19f8af6`).
+- ci: release Windows and Linux while macOS packaging is paused [stable-release] (`da6114c`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
