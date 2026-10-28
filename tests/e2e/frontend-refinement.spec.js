@@ -216,6 +216,105 @@ test('credits keep long contributor names readable at desktop widths', async ({p
     expect(errors).toEqual([]);
 });
 
+for (const width of [800, 1504]) {
+    test(`Arabic shop aligns mixed-language cards at ${width}px`, async ({ page }, info) => {
+        await openView(page, 'gamebanana-browse', { width, beforeScript: async page => {
+            await page.evaluate(() => {
+                const game = { id: 'toby.undertale', name: 'UNDERTALE', gamebanana: { id: 6755 } };
+                window.deltamodBackend.invokeOptional = async () => null;
+                window.deltamodBackend.invoke = async channel => channel === 'getAvailableGames' ? [game]
+                    : channel === 'getCurrentGameInfo' ? game : false;
+                window.IntersectionObserver = class { observe() {} disconnect() {} };
+                const titles = ['Undertale Red & Yellow', "Evan’s DUSTTALE: The UNDERTALE Mod (Demo)", 'تعديل UNDERTALE (نسخة 2)'];
+                window.communityAPI.modSources = { browse: async request => ({ ok: true, result: { payload:
+                    request.url.includes('/TopSubs') ? [{ _idRow: 1, _sPeriod: 'alltime' }] : {
+                        _aMetadata: { _bIsComplete: true },
+                        _aRecords: titles.map((title, index) => ({ _idRow: index + 1, _sModelName: 'Mod', _sName: title,
+                            _sDescription: index === 2 ? 'وصف التعديل (نسخة 2)' : 'A mod to satiate all your Clover shaped needs!',
+                            _aSubmitter: { _sName: index ? 'فريق Mod (KP)' : 'ShinixSZ (KP)', _sAvatarUrl: window.__placeholder },
+                            _sImageUrl: window.__placeholder, _nLikeCount: 217, _nPostCount: 323 }))
+                    }
+                } }) };
+            });
+        } });
+        await expect(page.locator('.modThumbImg')).toHaveCount(3);
+        await page.evaluate(() => window.Localization.setLanguage('ar'));
+        await page.evaluate(() => document.fonts.ready);
+        const thumbnails = await page.locator('.modThumbImg').evaluateAll(images => images.map(image => image.getBoundingClientRect().right));
+        expect(Math.max(...thumbnails) - Math.min(...thumbnails)).toBeLessThan(2);
+        for (const title of await page.locator('.modTitleSpan').all()) {
+            await expect(title).toHaveAttribute('dir', 'auto');
+        }
+        // The wide card keeps the first title and source on one line, so this
+        // observes the actual gap on both sides of the direction switch.
+        if (width === 1504) {
+            const title = await page.locator('.modTitleSpan').first().boundingBox();
+            const badge = await page.locator('.external-source-badge').first().boundingBox();
+            expect(title.x - (badge.x + badge.width)).toBeGreaterThanOrEqual(6);
+        }
+        expect(await page.locator('.viewport').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+        await page.locator('#searchInput').fill('Clover');
+        const search = await page.locator('#searchInput').boundingBox();
+        const clear = await page.locator('#clearModSearchButton').boundingBox();
+        expect(clear.x + clear.width).toBeLessThan(search.x + search.width / 2);
+        await page.locator('#clearModSearchButton').click();
+        await page.screenshot({ path: info.outputPath(`shop-ar-${width}.png`) });
+        await page.evaluate(() => window.Localization.setLanguage('en'));
+        const leftEdges = await page.locator('.modThumbImg').evaluateAll(images => images.map(image => image.getBoundingClientRect().left));
+        expect(Math.max(...leftEdges) - Math.min(...leftEdges)).toBeLessThan(2);
+        if (width === 1504) {
+            const title = await page.locator('.modTitleSpan').first().boundingBox();
+            const badge = await page.locator('.external-source-badge').first().boundingBox();
+            expect(badge.x - (title.x + title.width)).toBeGreaterThanOrEqual(6);
+        }
+    });
+
+    test(`Arabic credits translate known roles and isolate literal provider content at ${width}px`, async ({ page }, info) => {
+        const groups = ['Project Owners', 'Project Directors', 'Programmers', 'Artists & Musicians', 'Partners of the project', 'Special Thanks', 'Options'];
+        await openView(page, 'credits', { width, beforeScript: async page => {
+            await page.evaluate(({ groups, offline }) => {
+                window.communityAPI.app = { version: async () => '2.1.0', openMaintainerProfile() {} };
+                const localeFetch = window.fetch;
+                const profile = { _aCredits: groups.map(role => ({
+                    _sGroupName: role,
+                    _aAuthors: [
+                        { _sName: 'mc-intosh (KP)', _sAvatarUrl: window.__placeholder },
+                        { _sName: 'Options', _sAvatarUrl: window.__placeholder },
+                        { _sName: 'فريق المجتمع (KP)', _sAvatarUrl: window.__placeholder }
+                    ]
+                })) };
+                if (offline) window.localStorage.setItem('deltamod-original-credits', JSON.stringify(profile));
+                window.fetch = async (url, options) => {
+                    if (!String(url).startsWith('https://gamebanana.com/')) return localeFetch(url, options);
+                    if (offline) throw new Error('Fixture offline');
+                    return new Response(JSON.stringify(profile), { status: 200 });
+                };
+            }, { groups, offline: width === 800 });
+        } });
+        await expect(page.locator('.credit-group')).toHaveCount(7);
+        const originalCache = await page.evaluate(() => window.localStorage.getItem('deltamod-original-credits'));
+        await page.evaluate(() => window.Localization.setLanguage('ar'));
+        await page.evaluate(() => document.fonts.ready);
+        const keys = ['credits_role_project_owners', 'credits_role_project_directors', 'credits_role_programmers', 'credits_role_artists_musicians', 'credits_role_project_partners', 'credits_role_special_thanks'];
+        for (let index = 0; index < keys.length; index += 1) {
+            const translated = await page.evaluate(({ key, fallback }) => window.Localization.t(key, fallback), { key: keys[index], fallback: groups[index] });
+            expect(translated).not.toBe(groups[index]);
+            await expect(page.locator('.credit-group h3').nth(index)).toHaveText(translated);
+        }
+        await expect(page.locator('.credit-group h3').last()).toHaveText('Options');
+        await expect(page.locator('.credit-person span').nth(1)).toHaveText('Options');
+        await expect(page.locator('.credit-person span').first()).toHaveAttribute('dir', 'auto');
+        expect(await page.locator('.viewport').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+        expect(await page.locator('.credit-person span').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1))).toBe(true);
+        await page.locator('#upstream-title').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: info.outputPath(`credits-ar-${width}.png`) });
+        await page.evaluate(() => window.Localization.setLanguage('en'));
+        await expect(page.locator('.credit-group h3').first()).toHaveText('Project Owners');
+        await expect(page.locator('.credit-group h3').last()).toHaveText('Options');
+        expect(await page.evaluate(() => window.localStorage.getItem('deltamod-original-credits'))).toBe(originalCache);
+    });
+}
+
 
 test('library keeps the production controls and renders clean headings', async ({page}, info) => {
     await openView(page, 'allmods', {count: 0, width: 1920});

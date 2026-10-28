@@ -99,7 +99,7 @@
 }
 
 .maintainer-handle {
-    margin-left: 8px;
+    margin-inline-start: 8px;
     color: rgba(255, 255, 255, 0.62);
     font-size: 18px;
 }
@@ -130,7 +130,7 @@
 }
 
 .build-fact:nth-child(odd) {
-    border-right: 1px solid var(--panel-divider);
+    border-inline-end: 1px solid var(--panel-divider);
 }
 
 .build-fact div {
@@ -226,6 +226,7 @@
     font-size: 16px;
     line-height: 1.45;
     overflow-wrap: anywhere;
+    unicode-bidi: isolate;
 }
 
 .credits-pfp {
@@ -275,7 +276,7 @@
     }
 
     .build-fact:nth-child(odd) {
-        border-right: 0;
+        border-inline-end: 0;
     }
 }
 

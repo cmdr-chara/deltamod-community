@@ -87,9 +87,8 @@ describe('renderer page smoke contracts', () => {
         expect(appScript).toContain("invoke('quitCommunityForEasterEgg', [])");
     });
 
-    it('updates theme and options language without reloading the current page', () => {
+    it('updates theme and language without reloading the current page', () => {
         const appScript = read(path.join(root, 'web', 'index.js'));
-        const options = read(path.join(viewsRoot, 'options', 'index.js'));
         const localization = read(path.join(root, 'web', 'modules', 'localization.js'));
         const themeRefresh = appScript.slice(
             appScript.indexOf('async function themeRefresh'),
@@ -97,7 +96,6 @@ describe('renderer page smoke contracts', () => {
         );
         expect(themeRefresh).not.toContain('page(pageN)');
         expect(themeRefresh).toContain('applyThemeStyles(theme)');
-        expect(options).toContain("setLanguage(language.code, { refreshPage: false })");
         expect(localization).toContain('function applyKnownText(root = document)');
         expect(localization).toContain('async function setLanguage(code, { refreshPage = false } = {})');
         expect(localization).toContain('if (refreshPage && typeof window.page');

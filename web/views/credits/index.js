@@ -16,6 +16,16 @@
 const GB_URL = 'https://gamebanana.com/apiv11/Tool/20575/ProfilePage';
 const CACHE_KEY = 'deltamod-original-credits';
 const FALLBACK_AVATAR = 'img/packIcon.png';
+// Translate only this explicit upstream role vocabulary. Other provider labels
+// and every contributor name remain literal, including cached credit payloads.
+const CREDIT_ROLE_KEYS = Object.freeze({
+    'Project Owners': 'credits_role_project_owners',
+    'Project Directors': 'credits_role_project_directors',
+    'Programmers': 'credits_role_programmers',
+    'Artists & Musicians': 'credits_role_artists_musicians',
+    'Partners of the project': 'credits_role_project_partners',
+    'Special Thanks': 'credits_role_special_thanks'
+});
 
 function setAvatarFallback(image) {
     image.addEventListener('error', () => {
@@ -46,7 +56,15 @@ function renderContributorCredits(profile, fromCache) {
         const title = document.createElement('h3');
         title.id = `credit-role-${groupIndex}`;
         section.setAttribute('aria-labelledby', title.id);
-        uiRender(title, () => group?._sGroupName || uiText("Contributors"));
+        const role = group?._sGroupName;
+        title.dir = 'auto';
+        title.dataset.userContent = '';
+        uiRender(title, () => {
+            if (!role) return uiText("Contributors");
+            return Object.hasOwn(CREDIT_ROLE_KEYS, role)
+                ? uiHost.Localization?.t(CREDIT_ROLE_KEYS[role], role) ?? role
+                : role;
+        });
         section.appendChild(title);
 
         const people = document.createElement('ul');
@@ -65,6 +83,8 @@ function renderContributorCredits(profile, fromCache) {
             setAvatarFallback(avatar);
 
             const name = document.createElement('span');
+            name.dir = 'auto';
+            name.dataset.userContent = '';
             uiRender(name, () => credit?._sName || uiText("Unknown contributor"));
 
             person.append(avatar, name);

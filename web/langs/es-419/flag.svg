@@ -1,3 +1,3 @@
 <!-- SPDX-FileCopyrightText: 2026 cmdr-chara
 SPDX-License-Identifier: EUPL-1.2 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" rx="8" fill="#242035"/><circle cx="48" cy="32" r="25" fill="none" stroke="#aa9fd6" stroke-width="2"/><text x="48" y="40" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="22">ES</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" fill="#0b5265"/><path d="M25 8l10 1 5 5 7 1 1 6 8 5 9 1 6 9-7 9-5 2-3 9-4 5-3-2 1-9-4-7-4-6 1-8-5-4-4-1-3-5-5-1-3-6z" fill="#f3d788"/><path d="M64 18l8 2 4 3-9-1z" fill="#f3d788"/></svg>

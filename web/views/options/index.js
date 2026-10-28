@@ -385,6 +385,7 @@ async function addRowHeader(name, glyph = '') {
         content.appendChild(symbol);
     }
     const label = document.createElement('span');
+    label.className = 'setting-title';
     uiRender(label, () => resolveText(name));
     content.appendChild(label);
     td.appendChild(content);
@@ -416,6 +417,7 @@ async function addInfoRow(name, value, description = '', valueKind = 'text') {
     const label = document.createElement('td');
     const status = document.createElement('td');
     const heading = document.createElement('span');
+    heading.className = 'setting-title';
     uiRender(heading, () => resolveText(name));
     label.appendChild(heading);
     if (resolveText(description)) {
@@ -433,79 +435,6 @@ async function addInfoRow(name, value, description = '', valueKind = 'text') {
         uiRender(status, () => resolveText(value));
     }
     tr.append(label, status);
-    table.appendChild(tr);
-}
-
-async function addLanguageOption(language, selected) {
-    const table = document.querySelector('tbody');
-    const tr = document.createElement('tr');
-    tr.className = 'language-option-row';
-
-    const details = document.createElement('td');
-    const option = document.createElement('div');
-    option.className = 'language-option';
-
-    const flag = document.createElement('img');
-    flag.className = 'language-option-flag';
-    flag.src = language.flag;
-    flag.alt = '';
-    flag.width = 42;
-    flag.height = 28;
-
-    const copy = document.createElement('div');
-    const name = document.createElement('strong');
-    name.className = 'setting-title';
-    name.textContent = language.name;
-
-    const metadata = document.createElement('small');
-    metadata.className = 'calibri';
-    metadata.textContent = `${language.author} · v${language.version}`;
-
-    copy.append(name, document.createElement('br'), metadata);
-    option.append(flag, copy);
-    details.appendChild(option);
-
-    const { td: action, control } = createSettingControlCell();
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.disabled = selected;
-    uiRender(button, () => {
-        button.disabled = window.Localization?.getLanguage?.() === language.code;
-        return button.disabled ? localize('language_current', 'Current language') : localize('select', 'Select');
-    });
-    button.addEventListener('click', async () => {
-        window._pageArguments = { cat: 'lang' };
-        await window.Localization.setLanguage(language.code, { refreshPage: false });
-        document.querySelector('.page-heading h1').textContent = localize('options', 'Options');
-        document.querySelector('.page-heading p').textContent = localize(
-            'community_options_subtitle',
-            'Configure Community without changing the official Deltamod profile.'
-        );
-        const categoryLabels = {
-            b_gen: ['optcat_general', 'General'],
-            b_lang: ['optcat_lang', 'Language'],
-            b_ui: ['optcat_ui', 'Interface'],
-            b_inst: ['optcat_installation', uiText("Installation")],
-            b_data: ['optcat_data', 'Data'],
-            b_adv: ['optcat_advanced', 'Advanced'],
-            b_gb: ['optcat_gamebanana', 'GameBanana'],
-            b_nexus: ['optcat_nexus', 'Nexus Mods'],
-            b_mac: ['optcat_mac', 'Mac'],
-            b_dev: ['optcat_developer', 'Developer']
-        };
-        for (const [id, [key, fallback]] of Object.entries(categoryLabels)) {
-            const category = document.getElementById(id);
-            if (category) category.textContent = localize(key, fallback);
-        }
-        const headers = document.querySelectorAll('#modtable thead th');
-        if (headers[0]) headers[0].textContent = localize('option', 'Option');
-        if (headers[1]) headers[1].textContent = localize('status', 'Status');
-        document.getElementById('pageTitle').textContent = localize('options', 'Options');
-        await window.currentPageStack.cat('lang');
-    });
-    control.appendChild(button);
-
-    tr.append(details, action);
     table.appendChild(tr);
 }
 
@@ -594,7 +523,6 @@ window.currentPageStack.cat = async function(cat) {
     tbody.innerHTML = '';
 
     document.getElementById('b_gen').classList.remove('selected');
-    document.getElementById('b_lang').classList.remove('selected');
     document.getElementById('b_ui').classList.remove('selected');
     document.getElementById('b_inst').classList.remove('selected');
     document.getElementById('b_data').classList.remove('selected');
@@ -637,24 +565,6 @@ window.currentPageStack.cat = async function(cat) {
                 false
             );
             break;
-        case 'lang': {
-            await addRowHeader(() => localize('optcat_lang', 'Language'), "language");
-            await addInfoRow(
-                () => localize('language_current', 'Current language'),
-                () => window.Localization.getLanguage().toUpperCase(),
-                () => localize(
-                    'language_help',
-                    'Choose the language used by Deltamod Community. New Community features may fall back to English until their translations are updated.'
-                )
-            );
-
-            const languages = await window.Localization.getLanguages();
-            const currentLanguage = window.Localization.getLanguage();
-            for (const language of languages) {
-                await addLanguageOption(language, language.code === currentLanguage);
-            }
-            break;
-        }
         case 'ui':
             await addCheckboxOption(() => uiText("Enable music in menus"), () => uiText("Plays background music in the main menus."), 'audio', false, async (enabled) => {
                 if (enabled) {

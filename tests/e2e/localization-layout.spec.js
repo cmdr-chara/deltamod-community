@@ -119,6 +119,237 @@ test('Options keeps a saved checkbox and focus while long labels and RTL categor
     }))).toEqual({ sameCheckbox: true, calls: true, navigation: undefined });
 });
 
+test('Options uses the shell language picker and safely falls back from the removed Language category', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await openView(page, 'options', { width: 1100, beforeScript: async page => {
+        await page.evaluate(() => {
+            window._pageArguments = { cat: 'lang' };
+            window.communityAPI.profile = { summary: async () => ({ exists: false }) };
+        });
+    } });
+    await expect(page.locator('#FLAG-HASHCHECKS')).toBeVisible();
+    await expect(page.locator('#b_gen')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('#b_lang, .language-option-row')).toHaveCount(0);
+    expect(await page.evaluate(async () => (await window.Localization.getLanguages()).map(language => language.code))).toEqual(LANGUAGES);
+
+    await page.locator('#b_gen').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#b_ui')).toBeFocused();
+    await page.keyboard.press('Enter');
+    const checkbox = page.locator('#FLAG-AUDIO');
+    await expect(checkbox).toBeVisible();
+    await expect(page.locator('#b_ui')).toHaveAttribute('aria-current', 'page');
+    await checkbox.focus();
+    await page.evaluate(() => { window.__existingOptionsControl = document.getElementById('FLAG-AUDIO'); });
+    await page.evaluate(() => window.Localization.setLanguage('ar', { refreshPage: false }));
+    await settleFonts(page);
+    await expect(page.locator('#b_ui')).toHaveText(catalog('ar').optcat_ui);
+    await expect(checkbox).toBeFocused();
+    expect(await checkbox.evaluate(node => node === window.__existingOptionsControl)).toBe(true);
+    await expect(page.locator('#b_lang, .language-option-row')).toHaveCount(0);
+
+    await page.locator('#b_ui').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#b_inst')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#b_data')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#b_data')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.rowheader .setting-title')).toBeVisible();
+
+    await page.evaluate(() => window.currentPageStack.cat('lang'));
+    await expect(page.locator('#FLAG-HASHCHECKS')).toBeVisible();
+    await expect(page.locator('#b_gen')).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => window.__pageTarget)).toBeUndefined();
+    expect(errors).toEqual([]);
+});
+
+test('Options keeps the display font consistent between controls, section headings and information rows', async ({ page }, info) => {
+    await openView(page, 'options', { width: 1100, beforeScript: async page => {
+        await page.evaluate(() => {
+            window.communityAPI.profile = { summary: async () => ({ exists: false }) };
+        });
+    } });
+    await expect(page.locator('#FLAG-HASHCHECKS')).toBeVisible();
+    await page.evaluate(async () => {
+        await window.Localization.setLanguage('it');
+        await window.currentPageStack.cat('ui');
+    });
+    await settleFonts(page);
+    const controlFont = await page.locator('.setting-title').first().evaluate(node => getComputedStyle(node).fontFamily);
+    expect(controlFont).toContain('Pixel');
+
+    await page.evaluate(() => window.currentPageStack.cat('data'));
+    const section = page.locator('.rowheader > div > span').last();
+    const information = page.locator('#options tr').nth(1).locator('td').first().locator('span').first();
+    await expect(information).toHaveText('Profilo di Deltamod ufficiale');
+    await settleFonts(page);
+    for (const heading of [section, information]) {
+        expect(await heading.evaluate(node => getComputedStyle(node).fontFamily)).toBe(controlFont);
+    }
+    // Inspect the actual face used for accented Italian, not only a declared
+    // family whose file might be missing or fall back one character at a time.
+    const session = await page.context().newCDPSession(page);
+    await session.send('DOM.enable');
+    await session.send('CSS.enable');
+    const { root } = await session.send('DOM.getDocument');
+    const { nodeId } = await session.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.rowheader > div > span:last-child' });
+    const { fonts } = await session.send('CSS.getPlatformFontsForNode', { nodeId });
+    expect(fonts.length).toBeGreaterThan(0);
+    expect(fonts.every(font => font.isCustomFont && /8bitoperator/i.test(font.familyName))).toBe(true);
+    await session.detach();
+    await page.screenshot({ path: info.outputPath('options-data-it-fonts.png') });
+
+    for (const [code, font] of [['ar', 'Noto Sans Arabic'], ['ja', 'Noto Sans CJK']]) {
+        await page.evaluate(code => window.Localization.setLanguage(code), code);
+        await settleFonts(page);
+        for (const heading of [section, information]) {
+            expect(await heading.evaluate(node => getComputedStyle(node).fontFamily)).toContain(font);
+        }
+        expect(await page.locator('.rowheader .material-symbols-outlined').evaluate(node => getComputedStyle(node).fontFamily)).toContain('Material Symbols');
+    }
+    await page.evaluate(() => window.Localization.setLanguage('it'));
+    await settleFonts(page);
+    expect(await information.evaluate(node => getComputedStyle(node).fontFamily)).toBe(controlFont);
+});
+
+test('Halloween stays behind content and outside the navigation rail in both layout directions', async ({ page }, info) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    for (const view of ['options', 'gamebanana-browse', 'credits']) {
+        await openView(page, view, { width: 800, beforeScript: async page => {
+            await page.evaluate(view => {
+                if (view === 'gamebanana-browse') {
+                    const game = { id: 'toby.undertale', name: 'UNDERTALE', gamebanana: { id: 6755 } };
+                    window.IntersectionObserver = class { observe() {} disconnect() {} };
+                    window.deltamodBackend.invokeOptional = async () => null;
+                    window.deltamodBackend.invoke = async channel => {
+                        if (channel === 'getAvailableGames') return [game];
+                        if (channel === 'getCurrentGameInfo') return game;
+                        return false;
+                    };
+                    window.communityAPI.modSources = { browse: async request => ({ ok: true, result: { payload:
+                        request.url.includes('/TopSubs') ? [] : { _aMetadata: { _bIsComplete: true }, _aRecords: [{
+                            _idRow: 42, _sModelName: 'Mod', _sName: 'Moonlight', _sDescription: 'A mod.',
+                            _aSubmitter: { _sName: 'Moon team' }, _sImageUrl: window.__placeholder,
+                            _nLikeCount: 6, _nPostCount: 1
+                        }] }
+                    } }) };
+                } else if (view === 'credits') {
+                    window.communityAPI.app = { version: async () => '2.1.0', openMaintainerProfile() {} };
+                    const fetch = window.fetch;
+                    window.fetch = url => String(url).includes('/Tool/20575/ProfilePage')
+                        ? Promise.resolve(new Response(JSON.stringify({ _aCredits: [] }), { status: 200 })) : fetch(url);
+                }
+            }, view);
+        } });
+        const label = page.locator(view === 'options' ? '.setting-title' : view === 'gamebanana-browse' ? '.modTitleSpan' : '.maintainer-copy h2').first();
+        await expect(label).toBeVisible();
+        // The normal fixture omits shell startup. Load the real seasonal
+        // controller explicitly and force a date-independent Halloween preview.
+        await page.addScriptTag({ path: path.join(web, 'modules/seasonal-events.js') });
+        await page.evaluate(() => {
+            window.SeasonalEvents.setMode('halloween');
+            window.SeasonalEvents.setThemeReady(true);
+        });
+        const layer = page.locator('#deltamod-seasonal-layer');
+        await expect(layer).toHaveAttribute('data-event', 'halloween');
+        await expect(layer).toHaveAttribute('data-active', 'true');
+        await expect(layer).toHaveCSS('opacity', '1');
+        await expect(page.locator('.seasonal-particle')).toHaveCount(18);
+        for (const width of [800, 1366]) {
+            await page.setViewportSize({ width, height: 800 });
+            for (const code of ['it', 'ar']) {
+                await page.evaluate(code => window.Localization.setLanguage(code), code);
+                await settleFonts(page);
+                const geometry = await page.evaluate(() => {
+                    const rect = node => {
+                        const value = node.getBoundingClientRect();
+                        return { left: value.left, right: value.right, top: value.top, bottom: value.bottom };
+                    };
+                    return {
+                        layer: rect(document.getElementById('deltamod-seasonal-layer')),
+                        rail: rect(document.querySelector('.sidebar')),
+                        toggle: rect(document.getElementById('language-wheel-toggle')),
+                        corners: [...document.querySelectorAll('.seasonal-corner')].map(rect)
+                    };
+                });
+                await page.screenshot({ path: info.outputPath(`halloween-${view}-${code}-${width}.png`) });
+                for (const corner of geometry.corners) {
+                    for (const control of [geometry.rail, geometry.toggle]) {
+                        const overlaps = corner.left < control.right && corner.right > control.left
+                            && corner.top < control.bottom && corner.bottom > control.top;
+                        expect(overlaps, `${view}/${code}/${width}: a Halloween mark must not overlap navigation`).toBe(false);
+                    }
+                }
+                expect(code === 'ar' ? geometry.layer.right <= geometry.rail.left : geometry.layer.left >= geometry.rail.right,
+                    `${view}/${code}/${width}: the seasonal scene excludes the rail`).toBe(true);
+
+                // Put one real particle over a label, then inspect actual paint
+                // order. Temporarily enabling hit testing reveals decoration
+                // stacking; restore its noninteractive state immediately.
+                const ordering = await label.evaluate(node => {
+                    const host = document.getElementById('deltamod-seasonal-layer');
+                    const particle = host.querySelector('.seasonal-particle');
+                    const label = node.getBoundingClientRect();
+                    const bounds = host.getBoundingClientRect();
+                    const x = label.left + Math.min(8, label.width / 2), y = label.top + label.height / 2;
+                    const previousHost = host.getAttribute('style'), previousParticle = particle.getAttribute('style');
+                    host.style.pointerEvents = 'auto';
+                    particle.style.cssText = `left:${x - bounds.left - 8}px;top:${y - bounds.top - 8}px;width:16px;height:16px;animation:none;opacity:1;pointer-events:auto;`;
+                    const stack = document.elementsFromPoint(x, y);
+                    const foreground = stack.findIndex(element => element === node || node.contains(element));
+                    const background = stack.indexOf(particle);
+                    if (previousHost === null) host.removeAttribute('style'); else host.setAttribute('style', previousHost);
+                    if (previousParticle === null) particle.removeAttribute('style'); else particle.setAttribute('style', previousParticle);
+                    return { foreground, background };
+                });
+                expect(ordering.foreground, `${view}/${code}/${width}: label participates in paint order`).toBeGreaterThanOrEqual(0);
+                expect(ordering.background, `${view}/${code}/${width}: Halloween stays behind the label`).toBeGreaterThan(ordering.foreground);
+                await expect(layer).toHaveCSS('pointer-events', 'none');
+            }
+        }
+        if (view === 'options') {
+            const shell = fs.readFileSync(path.join(web, 'index.js'), 'utf8');
+            const alerts = shell.slice(shell.indexOf('let alertQueue'), shell.indexOf('\nfunction credits('));
+            await page.addScriptTag({ content: `
+                const MOTION = { standard: 0, easeIn: 'ease', easeOut: 'ease' };
+                const prefersReducedMotion = () => true;
+                window.shellText = (source, ...args) => window.Localization.text(source, ...args);
+                ${alerts}
+            ` });
+            await page.evaluate(() => {
+                window.__seasonalDialog = htmlAlert('Options', 'Halloween', [{ text: 'OK', resolveWith: 'ok' }]);
+            });
+            const dialog = page.getByRole('alertdialog');
+            await expect(dialog).toBeVisible();
+            await expect(page.locator('.alertMain')).toHaveCSS('opacity', '1');
+            await expect(layer).toHaveJSProperty('inert', true);
+            const inFront = await dialog.evaluate(node => {
+                const host = document.getElementById('deltamod-seasonal-layer');
+                const previous = host.style.pointerEvents;
+                // Alerts make the scene inert as well as noninteractive. Lift
+                // that only during the paint-order probe, then restore it.
+                const wasInert = host.inert;
+                host.inert = false;
+                host.style.pointerEvents = 'auto';
+                const bounds = node.getBoundingClientRect();
+                const stack = document.elementsFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+                const index = stack.indexOf(node);
+                const result = index >= 0 && stack.indexOf(host) > index;
+                host.style.pointerEvents = previous;
+                host.inert = wasInert;
+                return result;
+            });
+            expect(inFront, 'the real alert paints in front of Halloween').toBe(true);
+            await page.screenshot({ path: info.outputPath('halloween-options-ar-dialog.png') });
+            await dialog.getByRole('button').click();
+            await expect(dialog).not.toBeVisible();
+            await expect(layer).toHaveAttribute('data-active', 'true');
+        }
+    }
+});
+
 test('the real Options recovery confirmation translates in place and cancels without deleting data', async ({ page }, info) => {
     await openView(page, 'options', { width: 800, beforeScript: async page => {
         await page.evaluate(() => {
