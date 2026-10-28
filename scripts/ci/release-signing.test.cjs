@@ -36,12 +36,12 @@ function script(block, substitutions = {}) {
     return source;
 }
 
-function runScript(source, environment = {}) {
+function runScript(source, environment = {}, workingDirectory = root) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deltamod-signing-test-'));
     try {
         const output = path.join(dir, 'outputs');
         const result = spawnSync('bash', ['-c', source], {
-            cwd: root,
+            cwd: workingDirectory,
             encoding: 'utf8',
             timeout: 5000,
             env: { PATH: process.env.PATH, RUNNER_TEMP: dir, GITHUB_OUTPUT: output, GITHUB_ENV: path.join(dir, 'env'), ...environment }
@@ -114,4 +114,38 @@ test('stable is Latest and previews remain prereleases', () => {
     assert.match(step(release, 'Publish stable updater-signed release'), /--latest --prerelease=false/);
     assert.match(step(release, 'Publish unsigned Tauri preview'), /--prerelease\s/);
     assert.match(ci, /gh workflow run tauri-release\.yml --ref "\$TAG" -f release_mode=stable/);
+});
+
+
+test('Windows/Linux release asset gates accept complete layouts and reject missing or macOS assets', () => {
+    for (const preview of [false, true]) {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'deltamod-release-assets-'));
+        try {
+            const assets = path.join(directory, 'release-artifacts');
+            fs.mkdirSync(assets);
+            const names = ['app.deb', 'g3m-source.zip', 'umt-source.zip'];
+            for (const target of ['windows', 'linux']) {
+                for (const smoke of ['smoke', 'protocol', 'sidecars']) names.push(`${smoke}-${target}.json`);
+            }
+            names.push('app_x64.exe');
+            if (!preview) names.push('app_x64.exe.sig', 'Setup.exe', 'latest.json');
+            for (const name of names) fs.writeFileSync(path.join(assets, name), 'fixture');
+            const source = script(step(release, 'Prepare SHA-256 manifest'), {
+                'needs.validate.outputs.unsigned_preview': String(preview)
+            });
+            const valid = runScript(source, {}, directory);
+            assert.equal(valid.status, 0, valid.stderr);
+            const sums = path.join(assets, 'SHA256SUMS.txt');
+            assert.equal(fs.readFileSync(sums, 'utf8').trim().split('\n').length, names.length);
+            fs.unlinkSync(sums);
+            // Keep the same file count while substituting an unwanted Mac package.
+            fs.renameSync(path.join(assets, 'app.deb'), path.join(assets, 'app.dmg'));
+            assert.notEqual(runScript(source, {}, directory).status, 0);
+            fs.renameSync(path.join(assets, 'app.dmg'), path.join(assets, 'app.deb'));
+            fs.unlinkSync(path.join(assets, 'app_x64.exe'));
+            assert.notEqual(runScript(source, {}, directory).status, 0);
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    }
 });
