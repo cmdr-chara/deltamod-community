@@ -139,8 +139,8 @@ mod tests {
     }
     #[test]
     fn native_catalogs_are_utf8_and_support_fallback() {
-        for index in 0..CODES.len() {
-            assert!(!catalog(index).is_empty(), "{}", CODES[index]);
+        for (index, code) in CODES.iter().enumerate() {
+            assert!(!catalog(index).is_empty(), "{code}");
             assert_eq!(
                 text_at(index, "UNRECOGNIZED_DIAGNOSTIC_ID"),
                 "UNRECOGNIZED_DIAGNOSTIC_ID"

@@ -172,6 +172,108 @@
       "firstCommit": "55f7e058824e92028cc108e4338f9167695ad040",
       "firstCommitDate": "2026-09-28",
       "evidence": "added"
+    },
+    {
+      "path": "docs/LOCALIZATION.md",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "scripts/check-localization.js",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "src-tauri/src/localization.rs",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "tests/e2e/community-social-launch.spec.js",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "tests/e2e/localization-layout.spec.js",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "tests/localization-runtime.test.js",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/ar/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/es-419/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/ko/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/ru/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/th/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/tr/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/uk/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/zh-CN/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/langs/zh-TW/flag.svg",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/modules/localization.css",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
+    },
+    {
+      "path": "web/types/localization.d.ts",
+      "firstCommit": "56909db8f79546a7b078b0d54b1e0b783647b180",
+      "firstCommitDate": "2026-10-28",
+      "evidence": "added"
     }
   ]
 }

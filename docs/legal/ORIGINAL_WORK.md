@@ -48,6 +48,23 @@ The machine-readable source of truth is [`../provenance/community-original-work.
 | `src-tauri/crates/patching-runtime/src/selection.rs` | [`344a6c0646a7cd3677931a726d02ceb88925b7eb`](https://github.com/cmdr-chara/deltamod/commit/344a6c0646a7cd3677931a726d02ceb88925b7eb) | 2026-09-28 | Added as a new file |
 | `scripts/ci/gate.cjs` | [`55f7e058824e92028cc108e4338f9167695ad040`](https://github.com/cmdr-chara/deltamod/commit/55f7e058824e92028cc108e4338f9167695ad040) | 2026-09-28 | Added as a new file |
 | `scripts/ci/gate.test.cjs` | [`55f7e058824e92028cc108e4338f9167695ad040`](https://github.com/cmdr-chara/deltamod/commit/55f7e058824e92028cc108e4338f9167695ad040) | 2026-09-28 | Added as a new file |
+| `docs/LOCALIZATION.md` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `scripts/check-localization.js` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `src-tauri/src/localization.rs` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `tests/e2e/community-social-launch.spec.js` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `tests/e2e/localization-layout.spec.js` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `tests/localization-runtime.test.js` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/ar/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/es-419/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/ko/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/ru/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/th/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/tr/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/uk/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/zh-CN/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/langs/zh-TW/flag.svg` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/modules/localization.css` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
+| `web/types/localization.d.ts` | [`56909db8f79546a7b078b0d54b1e0b783647b180`](https://github.com/cmdr-chara/deltamod-community/commit/56909db8f79546a7b078b0d54b1e0b783647b180) | 2026-10-28 | Added as a new file |
 
 ## What the record proves
 

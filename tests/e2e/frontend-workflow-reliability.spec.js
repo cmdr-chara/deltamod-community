@@ -183,13 +183,13 @@ test('returning Home waits for configuration writes from the previous visit', as
     await expect(page.locator('.patch-mod-variant')).toHaveValue('alternate.patch');
 });
 
-test('an unsaved variant only blocks launch while its mod is enabled', async ({ page }) => {
+test('a disabled mod with an unsaved variant launches through the vanilla restoration transaction', async ({ page }) => {
     await openView(page, 'main', {
         count: 1,
         beforeScript: async page => {
             await configureVariants(page, false);
             await page.evaluate(() => { window.__states['mod-0'] = false; });
-            await deferCommands(page, ['setModVariant']);
+            await deferCommands(page, ['setModVariant', 'patchAndRun']);
         }
     });
     await expect(page.locator('.patch-mod-variant')).toBeVisible();
@@ -200,8 +200,23 @@ test('an unsaved variant only blocks launch while its mod is enabled', async ({ 
     await page.locator('label.patch-toggle').click();
     await expect(page.locator('#par')).toBeEnabled();
     await page.locator('#par').click();
-    expect(await page.evaluate(() => window.__calls.filter(([channel]) => channel === 'startGame')))
-        .toEqual([['startGame', []]]);
+    // An empty selection must restore tracked game files before launching. A
+    // direct startGame call could launch files left patched by the previous run.
+    expect(await page.evaluate(() => window.__calls.filter(([channel]) => ['startGame', 'patchAndRun'].includes(channel))))
+        .toEqual([['patchAndRun', [[]]]]);
+    await expect(page.locator('#par')).toBeDisabled();
+    await expect(page.locator('#vanilla')).toBeDisabled();
+    await expect(page.locator('#modcheck-mod-0')).not.toBeChecked();
+    await expect(page.locator('.patch-mod-variant')).toHaveValue('');
+    await expect(page.locator('.patch-mod-variant')).toHaveAttribute('aria-invalid', 'true');
+    expect(await page.evaluate(() => ({
+        enabled: window.__states['mod-0'],
+        savedVariant: window.__mods[0]._selectedVariant ?? null,
+        variantWrites: window.__calls.filter(([channel]) => channel === 'setModVariant').length
+    }))).toEqual({ enabled: false, savedVariant: null, variantWrites: 1 });
+    await settleCommand(page, 'patchAndRun');
+    await expect(page.locator('#par')).toBeEnabled();
+    await expect(page.locator('#vanilla')).toBeEnabled();
 });
 
 test('a failed toggle from a departed Home visit does not interrupt the new page', async ({ page }) => {
