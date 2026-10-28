@@ -63,11 +63,6 @@ html[dir="rtl"] #modtable :is(th, td):first-child { text-align: start; }
 :where(.mod-name, .patch-mod-title, .gamebanana-account-name, .product-package-id) { unicode-bidi: plaintext; }
 .theme-description.is-editable:empty::before { content: attr(data-placeholder); pointer-events: none; opacity: .7; }
 
-/* Seventeen equal sectors retain the wheel and give each language its own focus target. */
-.language-wheel-option, .language-wheel-option:not(:hover) { width: 40px; height: 40px; border-radius: 50%; }
-.language-wheel-option:focus-visible { outline: 2px solid white; outline-offset: 2px; }
-.language-wheel-current { padding: 12px; gap: 6px; }
-.language-wheel-current img { width: 60px; height: 38px; }
 #language-wheel-current-name { font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.25; max-inline-size: 106px; overflow-wrap: anywhere; }
 .language-wheel { direction: ltr; }
 @media (max-width: 700px) {

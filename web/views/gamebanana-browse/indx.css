@@ -149,7 +149,7 @@
 .external-source-badge {
     display: inline-flex;
     width: fit-content;
-    margin-left: 8px;
+    margin-inline-start: 8px;
     padding: 2px 6px;
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.08);
@@ -419,7 +419,7 @@ input {
 #searchInput {
     box-sizing: border-box;
     width: 100%;
-    padding-right: 42px;
+    padding-inline-end: 42px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 10px;
     background: rgba(3, 3, 5, 0.7);
@@ -456,7 +456,7 @@ input {
     box-sizing: border-box;
     position: absolute;
     top: 50%;
-    right: 5px;
+    inset-inline-end: 5px;
     width: 28px;
     height: 28px;
     min-width: 28px;

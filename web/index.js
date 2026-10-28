@@ -238,6 +238,9 @@ function themeVideoRevealDelayMs(themeConfig = theme) {
 const ROARING_KNIGHT_TRANSITION = Object.freeze({
     id: 'roaring-knight-monochrome-awakening',
     root: 'the-knight-transition',
+    cutTimes: Object.freeze([950, 1320, 1690]),
+    revealAt: 2200,
+    cleanupAt: 2800,
     slashFrames: Object.freeze(Array.from(
         { length: 6 },
         (_, index) => `spr_roaringknight_front_slash_${index}.png`
@@ -374,17 +377,17 @@ async function playRoaringKnightSoundSequence() {
         .catch(() => true);
     if (sfxEnabled === false || document.hidden || generation !== themeTransitionGeneration) return;
 
-    // DELTARUNE layers movement and multiple differently pitched cuts for the
-    // Knight. Keep the same structure while using locally bundled assets.
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 1200, 0.48, 0.86);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 2200, 0.26, 1.18);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 2900, 0.34, 0.72);
+    // Three distinct cuts retain the Knight's rhythm without a long overlay.
+    const [firstCut, secondCut, thirdCut] = ROARING_KNIGHT_TRANSITION.cutTimes;
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 160, 0.30, 0.86);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 430, 0.22, 1.18);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.move, 690, 0.18, 0.92);
 
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 3300, 0.58, 0.72);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 3720, 0.46, 0.94);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, 4140, 0.32, 1.22);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.impact, 4200, 0.34, 1.12, 950);
-    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.damage, 4250, 0.42, 0.78);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, firstCut, 0.52, 0.90);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, secondCut, 0.42, 1.05);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.slash, thirdCut, 0.36, 1.20);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.impact, 2100, 0.30, 1.12, 650);
+    scheduleRoaringKnightSfx(ROARING_KNIGHT_SFX.damage, 2120, 0.36, 0.90);
 }
 
 function activeThemeVisualConfig() {
@@ -544,58 +547,17 @@ function playRoaringKnightTransition() {
 
     const blackout = document.createElement('span');
     blackout.className = 'theme-transition-blackout';
-
-    const sigil = document.createElement('span');
-    sigil.className = 'theme-transition-sigil';
+    blackout.setAttribute('aria-hidden', 'true');
 
     const knightStage = document.createElement('div');
     knightStage.className = 'theme-transition-knight-stage';
-    for (let echoIndex = 3; echoIndex >= 0; echoIndex -= 1) {
-        const knight = document.createElement('img');
-        knight.className = `theme-transition-knight ${echoIndex === 0 ? 'is-main' : 'is-echo'}`;
-        knight.alt = '';
-        knight.style.setProperty('--echo-index', String(echoIndex));
-        knight.style.setProperty('--echo-delay', `${echoIndex * 55}ms`);
-        knight.style.setProperty('--echo-shift', `${echoIndex * -12}px`);
-        knight.style.setProperty('--echo-scale', String(0.88 + echoIndex * 0.035));
-        knight.style.setProperty('--echo-opacity', String(
-            echoIndex === 0 ? 1 : Math.max(0.16, 0.56 - echoIndex * 0.12)
-        ));
-        setRoaringKnightSlashFrame(knight, 0);
-        knightStage.appendChild(knight);
-    }
+    knightStage.setAttribute('aria-hidden', 'true');
+    const knight = document.createElement('img');
+    knight.className = 'theme-transition-knight';
+    knight.alt = '';
+    setRoaringKnightSlashFrame(knight, 0);
+    knightStage.appendChild(knight);
 
-    const soul = document.createElement('span');
-    soul.className = 'theme-transition-soul';
-    soul.textContent = '♥';
-
-    const rift = document.createElement('span');
-    rift.className = 'theme-transition-rift';
-
-    const particles = document.createElement('div');
-    particles.className = 'theme-transition-particles';
-    for (let particleIndex = 0; particleIndex < 32; particleIndex += 1) {
-        const particle = document.createElement('span');
-        particle.style.setProperty('--particle-angle', `${particleIndex * 137.5}deg`);
-        particle.style.setProperty('--particle-distance', `${20 + (particleIndex % 4) * 5}vmin`);
-        particle.style.setProperty('--particle-delay', `${particleIndex * 18}ms`);
-        particles.appendChild(particle);
-    }
-
-    const fountain = document.createElement('div');
-    fountain.className = 'theme-transition-fountain';
-    for (let i = 0; i < 16; i += 1) {
-        const ray = document.createElement('span');
-        ray.style.setProperty('--ray', String(i));
-        fountain.appendChild(ray);
-    }
-    const flight = document.createElement('img');
-    flight.className = 'theme-transition-flight';
-    flight.alt = '';
-    flight.src = themeTransitionAssetUrl('spr_roaringknight_fly_transition_0.png');
-    const title = document.createElement('div');
-    title.className = 'theme-transition-title';
-    title.textContent = 'THE ROARING KNIGHT';
     const skip = document.createElement('button');
     skip.id = 'theme-transition-skip';
     skip.className = 'theme-transition-skip';
@@ -611,28 +573,24 @@ function playRoaringKnightTransition() {
         finish();
     };
     document.addEventListener('keydown', themeTransitionEscapeHandler);
-    overlay.append(blackout, fountain, sigil, particles, flight, knightStage, soul, rift, title, skip);
-    for (const decoration of overlay.children) {
-        if (decoration !== skip) decoration.setAttribute('aria-hidden', 'true');
-    }
+    overlay.append(blackout, knightStage, skip);
     document.body.appendChild(overlay);
     document.documentElement.classList.add('roaring-knight-blackout');
     requestAnimationFrame(() => overlay.classList.add('is-active'));
     void playRoaringKnightSoundSequence();
 
-    [3300, 3720, 4140].forEach((delay, cut) => {
+    ROARING_KNIGHT_TRANSITION.cutTimes.forEach((delay, cut) => {
         themeTransitionPhaseTimers.push(setTimeout(() => {
             if (!overlay.isConnected) return;
-            const slash = rift.cloneNode();
-            slash.classList.add('is-cut');
+            const slash = document.createElement('span');
+            slash.className = 'theme-transition-rift is-cut';
+            slash.setAttribute('aria-hidden', 'true');
             slash.style.setProperty('--cut-angle', `${[-28, 32, -8][cut]}deg`);
             overlay.appendChild(slash);
             let frame = 0;
             const advance = () => {
                 if (!overlay.isConnected) return;
-                knightStage.querySelectorAll('.theme-transition-knight').forEach(knight => {
-                    setRoaringKnightSlashFrame(knight, frame);
-                });
+                setRoaringKnightSlashFrame(knight, frame);
                 frame += 1;
                 if (frame < ROARING_KNIGHT_TRANSITION.slashFrames.length) {
                     themeTransitionPhaseTimers.push(setTimeout(advance, 60));
@@ -641,19 +599,15 @@ function playRoaringKnightTransition() {
             advance();
         }, delay));
     });
-    themeTransitionImpactTimer = setTimeout(() => {
-        if (!overlay.isConnected) return;
-        overlay.classList.add('is-impacting');
-    }, 4200);
 
     themeTransitionReleaseTimer = setTimeout(() => {
         if (!overlay.isConnected) return;
         overlay.classList.add('is-releasing');
         document.documentElement.classList.remove('roaring-knight-blackout');
         completeRoaringKnightAwakening();
-    }, 5400);
+    }, ROARING_KNIGHT_TRANSITION.revealAt);
 
-    themeTransitionCleanupTimer = setTimeout(clearThemeTransition, 6800);
+    themeTransitionCleanupTimer = setTimeout(clearThemeTransition, ROARING_KNIGHT_TRANSITION.cleanupAt);
 }
 
 function synchronizeThemeTransition() {
@@ -1809,7 +1763,7 @@ async function renderPage(name) {
 
     pageN = name;
 
-    applyThemeStyles(theme);
+    applyThemeStyles(activeThemeVisualConfig());
 
     // Execute Page JS
     if (runScripts) {
@@ -1963,11 +1917,18 @@ async function setupLanguageWheel() {
     const backdrop = document.getElementById('language-wheel-backdrop');
     const sectors = document.getElementById('language-wheel-sectors');
     const options = document.getElementById('language-wheel-options');
-    const currentFlag = document.getElementById('language-wheel-current-flag');
     const currentName = document.getElementById('language-wheel-current-name');
+    const previousPage = document.getElementById('language-wheel-previous');
+    const nextPage = document.getElementById('language-wheel-next');
+    const pageStatus = document.getElementById('language-wheel-page');
     const languages = await window.Localization.getLanguages();
-    const optionButtons = [];
-    const sectorPaths = [];
+    const pageSize = 9;
+    const pageCount = Math.ceil(languages.length / pageSize);
+    let activePage = 0;
+    let visibleLanguages = [];
+    let optionButtons = [];
+    let sectorPaths = [];
+    let allowPointerPreview = false;
     const wheelFlagCodes = Object.freeze({
         en: 'en',
         it: 'it',
@@ -1994,9 +1955,20 @@ async function setupLanguageWheel() {
         wheelFlagCodes[language.code] ? `assets/language-flags/${wheelFlagCodes[language.code]}.svg` : language.flag
     );
 
+    // External SVG roots retain their own aspect-fit behavior inside an <image>.
+    // Match that viewport to the asset, then crop the pattern viewBox to each
+    // wedge's bounding box. A normalized 1x1 image can leave transparent caps.
+    const flagSizes = new Map(await Promise.all(languages.map(language => new Promise(resolve => {
+        const image = new Image();
+        image.onload = () => resolve([language.code, { width: image.naturalWidth || 1, height: image.naturalHeight || 1 }]);
+        image.onerror = () => resolve([language.code, { width: 1, height: 1 }]);
+        image.src = wheelFlag(language);
+    }))));
+
     const previewLanguage = language => {
-        const previewIndex = Math.max(0, languages.findIndex(item => item.code === language.code));
-        const targetRotation = previewIndex * (360 / languages.length);
+        const previewIndex = visibleLanguages.findIndex(item => item.code === language.code);
+        if (previewIndex < 0) return;
+        const targetRotation = previewIndex * (360 / visibleLanguages.length);
         if (previewRotation === null) {
             previewRotation = targetRotation;
         } else {
@@ -2006,8 +1978,6 @@ async function setupLanguageWheel() {
             );
             previewRotation += shortestDelta;
         }
-        currentFlag.src = wheelFlag(language);
-        currentFlag.alt = '';
         if (currentName) { currentName.textContent = language.name; currentName.lang = language.code; currentName.dir = 'auto'; }
         wheel.style.setProperty('--preview-angle', `${previewRotation}deg`);
         optionButtons.forEach(button => {
@@ -2020,6 +1990,12 @@ async function setupLanguageWheel() {
 
     const syncLanguageWheel = () => {
         const language = selectedLanguage();
+        const selectedPage = Math.floor(languages.indexOf(language) / pageSize);
+        const restoreFocus = wheel.contains(document.activeElement) && !wheel.hidden;
+        if (!visibleLanguages.length || activePage !== selectedPage) {
+            renderPage(selectedPage);
+            if (restoreFocus) optionButtons.find(button => button.dataset.language === language.code)?.focus();
+        }
         toggleFlag.src = wheelFlag(language);
         previewLanguage(language);
 
@@ -2027,6 +2003,7 @@ async function setupLanguageWheel() {
         toggle.title = changeLabel;
         toggle.setAttribute('aria-label', `${changeLabel}: ${language.name}`);
         wheel.setAttribute('aria-label', changeLabel);
+        syncPagination();
         for (const button of optionButtons) {
             button.setAttribute(
                 'aria-pressed',
@@ -2077,9 +2054,11 @@ async function setupLanguageWheel() {
     };
 
     const focusRelativeOption = (button, direction) => {
-        const currentIndex = optionButtons.indexOf(button);
-        const nextIndex = (currentIndex + direction + optionButtons.length) % optionButtons.length;
-        optionButtons[nextIndex].focus();
+        const currentIndex = languages.findIndex(language => language.code === button.dataset.language);
+        const nextIndex = (currentIndex + direction + languages.length) % languages.length;
+        const targetPage = Math.floor(nextIndex / pageSize);
+        if (targetPage !== activePage) renderPage(targetPage);
+        optionButtons[nextIndex % pageSize].focus();
     };
 
     const activateLanguage = async language => {
@@ -2126,76 +2105,135 @@ async function setupLanguageWheel() {
         ].join(' ');
     };
 
-    languages.forEach((language, index) => {
-        const button = document.createElement('button');
-        const angle = index * (360 / languages.length);
-        const buttonRadius = 112;
-        const buttonAngle = (angle - 90) * (Math.PI / 180);
-        const sector = document.createElementNS(svgNamespace, 'path');
-        const pattern = document.createElementNS(svgNamespace, 'pattern');
-        const patternImage = document.createElementNS(svgNamespace, 'image');
-        const patternId = `language-sector-${language.code.replace(/[^a-z0-9]/gi, '-')}`;
+    const syncPagination = () => {
+        const number = value => window.Localization.number?.(value) ?? String(value);
+        const status = window.Localization.t('language_page_status', 'Page {0} of {1}', number(activePage + 1), number(pageCount));
+        pageStatus.textContent = `${number(activePage + 1)} / ${number(pageCount)}`;
+        pageStatus.setAttribute('aria-label', status);
+        previousPage.disabled = activePage === 0;
+        nextPage.disabled = activePage === pageCount - 1;
+        previousPage.setAttribute('aria-label', window.Localization.t('language_previous_page', 'Previous languages'));
+        nextPage.setAttribute('aria-label', window.Localization.t('language_next_page', 'More languages'));
+        previousPage.title = previousPage.getAttribute('aria-label');
+        nextPage.title = nextPage.getAttribute('aria-label');
+        wheel.dataset.page = String(activePage + 1);
+    };
 
-        button.type = 'button';
-        button.className = 'language-wheel-option noScaleBTN';
-        button.dataset.language = language.code;
-        button.title = language.name;
-        button.lang = language.code;
-        button.dir = 'auto';
-        button.setAttribute('aria-label', language.name);
-        button.style.setProperty('--wheel-index', String(index));
-        button.style.setProperty('--wheel-button-x', `${145 + (Math.cos(buttonAngle) * buttonRadius)}px`);
-        button.style.setProperty('--wheel-button-y', `${145 + (Math.sin(buttonAngle) * buttonRadius)}px`);
+    const renderPage = page => {
+        activePage = Math.max(0, Math.min(pageCount - 1, page));
+        visibleLanguages = languages.slice(activePage * pageSize, (activePage + 1) * pageSize);
+        // A stationary pointer must not preview a different language when sectors are replaced.
+        allowPointerPreview = false;
+        optionButtons = [];
+        sectorPaths = [];
+        sectorDefinitions.replaceChildren();
+        sectors.replaceChildren(sectorDefinitions);
+        options.replaceChildren();
+        previewRotation = null;
+        visibleLanguages.forEach((language, index) => {
+            const button = document.createElement('button');
+            const angle = index * (360 / visibleLanguages.length);
+            const buttonRadius = 112;
+            const buttonAngle = (angle - 90) * (Math.PI / 180);
+            const sector = document.createElementNS(svgNamespace, 'path');
+            const pattern = document.createElementNS(svgNamespace, 'pattern');
+            const patternImage = document.createElementNS(svgNamespace, 'image');
+            const patternId = `language-sector-${language.code.replace(/[^a-z0-9]/gi, '-')}`;
 
-        sector.classList.add('language-wheel-sector');
-        sector.dataset.language = language.code;
-        sector.style.fill = `url(#${patternId})`;
-        sector.setAttribute('d', sectorPath(
-            -90 - 180 / languages.length + angle + 1.4,
-            -90 + 180 / languages.length + angle - 1.4
-        ));
+            button.type = 'button';
+            button.className = 'language-wheel-option noScaleBTN';
+            button.dataset.language = language.code;
+            button.title = language.name;
+            button.lang = language.code;
+            button.dir = 'auto';
+            button.setAttribute('aria-label', language.name);
+            button.style.setProperty('--wheel-index', String(index));
+            button.style.setProperty('--wheel-button-x', `${139 + (Math.cos(buttonAngle) * buttonRadius)}px`);
+            button.style.setProperty('--wheel-button-y', `${145 + (Math.sin(buttonAngle) * buttonRadius)}px`);
 
-        pattern.id = patternId;
-        pattern.setAttribute('width', '1');
-        pattern.setAttribute('height', '1');
-        pattern.setAttribute('patternUnits', 'objectBoundingBox');
-        pattern.setAttribute('patternContentUnits', 'objectBoundingBox');
-        patternImage.setAttribute('href', wheelFlag(language));
-        patternImage.setAttribute('width', '1');
-        patternImage.setAttribute('height', '1');
-        patternImage.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-        pattern.appendChild(patternImage);
-        sectorDefinitions.appendChild(pattern);
-        sectors.appendChild(sector);
-        sectorPaths.push(sector);
+            sector.classList.add('language-wheel-sector');
+            sector.dataset.language = language.code;
+            sector.style.fill = `url(#${patternId})`;
+            sector.setAttribute('d', sectorPath(
+                -90 - 180 / visibleLanguages.length + angle + 1.4,
+                -90 + 180 / visibleLanguages.length + angle - 1.4
+            ));
 
-        sector.addEventListener('pointerover', () => {
-            if (!isChangingLanguage) previewLanguage(language);
+            pattern.id = patternId;
+            pattern.setAttribute('width', '1');
+            pattern.setAttribute('height', '1');
+            pattern.setAttribute('patternUnits', 'objectBoundingBox');
+            const flagSize = flagSizes.get(language.code);
+            pattern.setAttribute('viewBox', `0 0 ${flagSize.width} ${flagSize.height}`);
+            pattern.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+            patternImage.setAttribute('href', wheelFlag(language));
+            patternImage.setAttribute('width', String(flagSize.width));
+            patternImage.setAttribute('height', String(flagSize.height));
+            pattern.appendChild(patternImage);
+            sectorDefinitions.appendChild(pattern);
+            sectors.appendChild(sector);
+            sectorPaths.push(sector);
+
+            sector.addEventListener('pointerover', () => {
+                if (!isChangingLanguage && allowPointerPreview) previewLanguage(language);
+            });
+            sector.addEventListener('click', () => activateLanguage(language));
+            button.addEventListener('pointerover', () => {
+                if (!isChangingLanguage && allowPointerPreview) previewLanguage(language);
+            });
+            button.addEventListener('focus', () => previewLanguage(language));
+            button.addEventListener('click', () => activateLanguage(language));
+            button.addEventListener('keydown', event => {
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    focusRelativeOption(button, event.key === 'ArrowRight' && document.documentElement.dir === 'rtl' ? -1 : 1);
+                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    focusRelativeOption(button, event.key === 'ArrowLeft' && document.documentElement.dir === 'rtl' ? 1 : -1);
+                } else if (event.key === 'Home') {
+                    event.preventDefault();
+                    renderPage(0);
+                    optionButtons[0].focus();
+                } else if (event.key === 'End') {
+                    event.preventDefault();
+                    renderPage(pageCount - 1);
+                    optionButtons[optionButtons.length - 1].focus();
+                } else if (event.key === 'PageUp' || event.key === 'PageDown') {
+                    event.preventDefault();
+                    changePage(event.key === 'PageDown' ? 1 : -1, index);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeWheel();
+                }
+            });
+
+            optionButtons.push(button);
+            options.appendChild(button);
         });
-        sector.addEventListener('click', () => activateLanguage(language));
-        button.addEventListener('focus', () => previewLanguage(language));
-        button.addEventListener('click', () => activateLanguage(language));
-        button.addEventListener('keydown', event => {
-            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                event.preventDefault();
-                focusRelativeOption(button, event.key === 'ArrowRight' && document.documentElement.dir === 'rtl' ? -1 : 1);
-            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                focusRelativeOption(button, event.key === 'ArrowLeft' && document.documentElement.dir === 'rtl' ? 1 : -1);
-            } else if (event.key === shellText("Home")) {
-                event.preventDefault();
-                optionButtons[0].focus();
-            } else if (event.key === 'End') {
-                event.preventDefault();
-                optionButtons[optionButtons.length - 1].focus();
-            } else if (event.key === 'Escape') {
-                event.preventDefault();
-                closeWheel();
-            }
-        });
+        const selected = selectedLanguage();
+        optionButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.language === selected.code)));
+        sectorPaths.forEach(path => path.classList.toggle('is-current', path.dataset.language === selected.code));
+        syncPagination();
+    };
 
-        optionButtons.push(button);
-        options.appendChild(button);
+    const changePage = (direction, focusIndex = 0) => {
+        const targetPage = Math.max(0, Math.min(pageCount - 1, activePage + direction));
+        if (targetPage === activePage || isChangingLanguage) return;
+        renderPage(targetPage);
+        const selected = selectedLanguage();
+        const preview = visibleLanguages.find(language => language.code === selected.code) || visibleLanguages[0];
+        previewLanguage(preview);
+        optionButtons[Math.min(focusIndex, optionButtons.length - 1)]?.focus();
+    };
+
+    previousPage.addEventListener('click', () => changePage(-1));
+    nextPage.addEventListener('click', () => changePage(1));
+    wheel.addEventListener('pointermove', event => {
+        if (!event.movementX && !event.movementY) return;
+        allowPointerPreview = true;
+        const code = event.target.closest('.language-wheel-sector, .language-wheel-option')?.dataset.language;
+        const language = visibleLanguages.find(item => item.code === code);
+        if (language && !isChangingLanguage) previewLanguage(language);
     });
 
     toggle.addEventListener('click', () => {
@@ -2203,14 +2241,22 @@ async function setupLanguageWheel() {
         else openWheel();
     });
     wheel.addEventListener('pointerleave', () => {
-        if (!isChangingLanguage) previewLanguage(selectedLanguage());
+        if (!isChangingLanguage) {
+            const selected = selectedLanguage();
+            previewLanguage(visibleLanguages.find(language => language.code === selected.code) || visibleLanguages[0]);
+        }
     });
     backdrop.addEventListener('click', () => closeWheel());
     window.addEventListener('keydown', event => {
         if (event.key === 'Tab' && !wheel.hidden) {
-            const first = optionButtons[0], last = optionButtons.at(-1);
+            const controls = [...wheel.querySelectorAll('button:not(:disabled)')];
+            const first = controls[0], last = controls.at(-1);
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+        if ((event.key === 'PageUp' || event.key === 'PageDown') && !wheel.hidden && !event.defaultPrevented) {
+            event.preventDefault();
+            changePage(event.key === 'PageDown' ? 1 : -1);
         }
         if (event.key === 'Escape' && !wheel.hidden) {
             event.preventDefault();

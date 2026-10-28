@@ -158,8 +158,12 @@
         <div class="language-wheel-options" id="language-wheel-options"></div>
         <div class="language-wheel-indicator" aria-hidden="true"></div>
         <div class="language-wheel-current" aria-live="polite">
-            <img id="language-wheel-current-flag" src="langs/en/flag.png" alt="">
             <bdi id="language-wheel-current-name"></bdi>
+            <div class="language-wheel-pagination">
+                <button id="language-wheel-previous" class="noScaleBTN" type="button" aria-label="Previous languages"><span aria-hidden="true">‹</span></button>
+                <span id="language-wheel-page" role="status" aria-live="polite">1 / 2</span>
+                <button id="language-wheel-next" class="noScaleBTN" type="button" aria-label="More languages"><span aria-hidden="true">›</span></button>
+            </div>
         </div>
     </div>
     <div class="gamebanana-account" role="button" tabindex="0" aria-label="GameBanana account" data-i18n-aria-label="shell_account" title="GameBanana account" data-i18n-title="shell_account" style="opacity: 0;"></div>

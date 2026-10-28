@@ -101,8 +101,10 @@
       "musicSha256": "e34eca856216e6b257bc253309fd51ccb969b0668b8a31d61a35c68cfd3fd554",
       "backgroundSha256": "16c388f9a3a6c8e9e83b007ca00b17ee9c8a973000ffb82b299b9df64ffb046e",
       "bundledMusicSha256": "e34eca856216e6b257bc253309fd51ccb969b0668b8a31d61a35c68cfd3fd554",
-      "backgroundVideo": "the-knight.mp4",
-      "backgroundVideoSha256": "859761f8e1db95fbce0dd4db19d246ccb0e5d70dd4c20f07f431343805dc8d86"
+      "backgroundVideo": "the-knight.webm",
+      "backgroundVideoSha256": "fa7bac397ddc6f4b1ef0f8ba40bb4f7a8a8a7151418b90e8265b988a781624c7",
+      "backgroundVideoSource": "the-knight.mp4",
+      "backgroundVideoSourceSha256": "ac6f6e2571a9b42c82eb998c3b3b7b484580878874b29dc283e6ac97dcfc6d72"
     },
     {
       "id": "undertale-ruins",

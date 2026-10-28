@@ -1065,7 +1065,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                 td0.style.display = 'flex';
                 td0.style.alignItems = 'center';
                 td0.style.gap = '14px';
-                td0.style.justifyContent = 'left';
+                td0.style.justifyContent = 'flex-start';
                 // Rendering of td0
                 {
                 let thumbs = getAllThumbs(mod);
@@ -1099,6 +1099,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                 biggerSpan.style.marginBottom = '0px';
                 biggerSpan.innerText = mod._sName;
                 biggerSpan.dataset.userContent = '';
+                biggerSpan.dir = 'auto';
                 biggerSpan.style.cursor = 'pointer';
                 biggerSpan.onclick = () => {
                     window.open(mod._sProfileUrl, '_blank');
@@ -1193,6 +1194,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                 var summary = document.createElement('div');
                 summary.className = 'external-source-summary calibri';
                 summary.dataset.userContent = '';
+                summary.dir = 'auto';
                 bindText(summary, () => (mod._sDescription || t("shop_ui_no_description_was_provided", "No description was provided.")));
                 div1.appendChild(summary);
                 }

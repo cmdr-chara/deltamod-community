@@ -3,7 +3,11 @@
     --season-soul: var(--theme-soul-color, var(--season-accent));
     position: fixed;
     inset: 0;
-    z-index: 98;
+    inset-block-start: var(--topbar-height, 40px);
+    inset-inline-start: var(--rail-width, 70px);
+    /* This is a background scene, below the viewport (3) and rail (4).
+       Pointer-events alone does not keep particles from painting over text. */
+    z-index: 2;
     contain: layout paint style;
     overflow: hidden;
     opacity: 0;
@@ -33,13 +37,13 @@ body.deltamod-boot-active > .deltamod-seasonal-layer {
 }
 
 .seasonal-corner-primary {
-    bottom: 20px;
-    right: 24px;
+    inset-block-end: 20px;
+    inset-inline-end: 24px;
 }
 
 .seasonal-corner-secondary {
-    bottom: 20px;
-    left: 82px;
+    inset-block-end: 20px;
+    inset-inline-start: 12px;
     color: var(--season-soul);
     transform: scaleX(-1);
 }
@@ -223,7 +227,7 @@ body.deltamod-boot-active > .deltamod-seasonal-layer {
     }
 
     .seasonal-corner-primary {
-        bottom: 12px;
-        right: 12px;
+        inset-block-end: 12px;
+        inset-inline-end: 12px;
     }
 }

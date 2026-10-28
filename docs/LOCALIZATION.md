@@ -51,6 +51,22 @@ page, repeat provider requests, replace inputs, change selected mods, or discard
 typed comments. Subsequent native dialogs use the selected language. Operating
 system file-picker chrome uses the operating system's own language.
 
+The radial language selector uses two pages of nine and eight languages. It
+opens on the page containing the saved language. The centre shows the
+language name alongside previous/next page controls and a localized page
+indicator. Flags fill the radial sectors, with no extra flag cards on the ring.
+Paging previews choices without saving a language; activation keeps
+the existing in-place language change. The same controls work with the keyboard
+and preserve focus when the selector closes.
+The wheel is the app's language picker; Options does not repeat the language list.
+
+All 17 languages have bundled artwork rather than temporary code-labelled
+placeholders. National flags represent the corresponding regional catalogs;
+English retains its existing combined UK/US artwork. Latin American Spanish
+uses a Latin America silhouette, and Arabic uses the historical pan-Arab flag,
+since neither catalog represents a single country. These are independently
+drawn SVG assets and work offline.
+
 ## Adding or changing text
 
 `web/langs/en/language.json` is the canonical key set. Every other language must
@@ -78,6 +94,13 @@ retaining other properties. Use callbacks in shared alerts for owned titles,
 messages, and actions so an already open dialog can update. Avoid rebuilding a
 view just to translate it: that would lose keyboard focus and user state.
 
+The original-project credits translate six explicitly recognized role headings:
+Project Owners, Project Directors, Programmers, Artists & Musicians, Partners of
+the project, and Special Thanks. Exact role strings map to catalog keys for both
+live and cached data; contributor names and unknown roles remain literal. Names,
+mod titles and provider descriptions carry their own text direction so Latin and
+Arabic content can coexist without shifting thumbnail or avatar alignment.
+
 User names, mod titles, provider comments, file paths, logs, and editable content
 are not translation inputs. Generated native/provider fallbacks carry explicit
 source or fallback metadata so the renderer can distinguish app-owned labels
@@ -103,6 +126,18 @@ or automatic direction; technical text and logs retain left-to-right order.
 Formatted placeholder values are isolated in Arabic so paths, game titles, and
 identifiers do not reorder surrounding prose.
 
+Seasonal decorations occupy the content area below the title bar and beside the
+navigation rail in either direction. Their paint layer stays behind views and
+dialogs, preserving the Halloween artwork and animation without painting over
+text or the language selector.
+After Roaring Knight awakens, page navigation keeps its active monochrome
+palette on seasonal artwork as well as the rest of the interface. The awakening
+uses one original pixel sprite, three cuts and a 2.8-second reveal sequence.
+The background repeats the original six-second forward cycle without an appended
+reverse section.
+Roaring Knight's blackout and awakened states omit backdrop filters to avoid
+stacking blurred video surfaces underneath the monochrome rendering filter.
+
 The existing Latin display face remains in use. Local WOFF2 Noto fonts cover
 Arabic shaping, Chinese, Japanese, Korean, Thai, Cyrillic, and extended Latin
 characters. Material icon fonts remain separate. All font assets work offline;
@@ -110,6 +145,10 @@ no production font network request or CSP expansion is needed. A single full
 pan-CJK font retains OpenType localized forms for all four CJK catalogs rather
 than bundling four copies. The added font payload totals 12,783,324 bytes before
 application packaging.
+
+Options section headings and informational row titles use the same display-font
+class as interactive setting titles. Explanations and status values retain the
+body face; script-specific font overrides and Material icon faces stay separate.
 
 Source URLs, pinned revisions, source and output SHA-256 digests, character maps,
 and localized-form tags are recorded in `web/commons/fonts/provenance.json`.
