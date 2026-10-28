@@ -8,11 +8,27 @@ must be absent, Windows publisher signing is intentionally absent, and macOS
 notarization is intentionally absent. A preview never satisfies this stable gate.
 
 `Community Tauri Release` also has a non-publishing `validation` mode. It checks
-an exact `DeltaMaster` SHA, builds all four platform packages, installs and smokes
+an exact `DeltaMaster` SHA, builds both current platform packages, installs and smokes
 them, verifies that signing/updater artifacts are absent, and retains a checksum
 manifest. This mode exists so release packaging can stay continuously verified when
 the updater signing key is unavailable. It does not satisfy the updater-signature
 or stable-publication requirements below. Platform publisher signing is intentionally not used.
+
+## Current release platforms
+
+CI and release packaging currently target Windows x64 and Linux x64 only. macOS
+packages are paused after repeated hosted ARM runner allocation failures; neither
+macOS architecture is validated or published by these workflows. Existing macOS
+releases and source/build support remain available. Re-enabling macOS requires
+restoring both native CI lanes, package smoke checks, and the signed updater targets.
+
+The release workflow explicitly selects the `windows-linux` updater profile:
+`latest.json` must contain exactly `windows-x86_64`. It rejects unexpected signed
+targets rather than treating missing macOS packages as a successful macOS release.
+The default `all` profile remains available for full-platform tooling and tests.
+A macOS client will receive no update from this Windows/Linux manifest; users must
+keep their previous macOS build until native validation and publishing resume.
+Renderer/browser E2E checks run on Linux.
 
 ## Required parity checks
 
@@ -32,17 +48,17 @@ or stable-publication requirements below. Platform publisher signing is intentio
 7. The packaged app starts, shows the main window, reports the exact package version, persists one unique flag, loads the base theme, lists an installation, and returns a bounded error for an unknown IPC channel.
 8. The protocol smoke test registers `deltamod-community://`, launches a cold process with one deep link, confirms `protocol:rendererReady` receives the queued action, and confirms a second instance forwards the link instead of creating a second data root.
    The unsigned Windows NSIS candidate passes this gate; bounded evidence is retained at `benchmarks/packaged-smoke/tauri-windows-installed-nsis-protocol.json`. Signing remains a separate requirement.
-   The installed Linux job dispatches through `xdg-open`; both installed macOS
+   The installed Linux job dispatches through `xdg-open`. When macOS publishing resumes, both installed macOS
    architectures declare the scheme in `Info.plist`, run from `/Applications`, and
    dispatch through Launch Services. Their evidence must be produced by native CI.
 9. Windows x64: install and uninstall the NSIS package, verify its updater signature and a signed update from the previous stable version, run a mod import and CSX patch smoke test, and verify all five sidecars.
 10. Linux x64: install the `.deb`, confirm updater status is `unsupported-package`, import a mod, run a G3MTool patch smoke test, and verify all five sidecars.
-11. macOS x64 and arm64: verify the app bundle architecture, updater archive signature, and a signed update from the previous stable version; run the same persistence/protocol smoke tests, verify G3MTool, and mark UndertaleModTool CSX unavailable on arm64 rather than silently falling back.
+11. Deferred until macOS publishing resumes — macOS x64 and arm64: verify the app bundle architecture, updater archive signature, and a signed update from the previous stable version; run the same persistence/protocol smoke tests, verify G3MTool, and mark UndertaleModTool CSX unavailable on arm64 rather than silently falling back.
 12. Capture seven measured launches of the packaged Tauri candidate on the same
     Windows host and protocol as `benchmarks/desktop/electron-9e6f8af.json`, retain
     the immutable raw result, and require `scripts/desktop-benchmark/compare.js` to
     accept the pair before reporting readiness, memory, or artifact-size deltas.
-13. Confirm updater artifacts are enabled only in the Windows/macOS platform overrides, `latest.json` contains exactly those three signed targets, and Linux `.deb` is absent.
+13. Confirm updater artifacts remain enabled only in the Windows/macOS platform overrides, while the active release matrix builds Windows and Linux only. `latest.json` must contain exactly the signed Windows x64 target; Linux `.deb` and both macOS targets must be absent.
 14. Generate `SHA256SUMS.txt` over every release asset, including signatures and `latest.json`, attach GitHub attestations, and state that checksums verify integrity but not publisher identity.
 
 ## External signing prerequisites
@@ -64,7 +80,7 @@ macOS Gatekeeper restrictions. Users may approve the specific verified macOS app
 Privacy & Security; never recommend globally disabling Gatekeeper.
 
 Tauri updater signatures remain mandatory and use the existing trusted public key.
-They are included for exactly the Windows x64 and two macOS targets in `latest.json`;
+For the current Windows/Linux release scope, they are included for exactly Windows x64 in `latest.json`;
 Linux `.deb` remains a manual download. Stable publication explicitly uses
 `--latest --prerelease=false`; previews remain prereleases and never replace the
 stable updater endpoint.
