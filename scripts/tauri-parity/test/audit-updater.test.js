@@ -139,3 +139,30 @@ test('deterministic architecture fuzz: 10000 names cannot smuggle another archit
     assert.equal(updaterTarget(`${prefix}x64${suffix}`), suffix === '.exe' ? 'windows-x86_64' : 'darwin-x86_64');
   }
 });
+
+test('Windows/Linux scope requires a signed Windows updater and excludes manual Linux packages', t => {
+  const root = artifacts(t, [names[0]]);
+  fs.writeFileSync(path.join(root, 'Deltamod_2.0.18_amd64.deb'), 'manual Linux package');
+  const manifest = generate(root, tag, version, 'windows-linux');
+  assert.deepEqual(Object.keys(manifest.platforms), ['windows-x86_64']);
+  assert.equal(generate(root, `updater-rehearsal-v${version}-run-123`, version, 'windows-linux').version, version);
+  assert.throws(() => generate(root, tag, version, 'unknown'), /Unknown release platform profile/);
+  assert.throws(() => generate(artifacts(t, []), tag, version, 'windows-linux'), /Missing signed updater target: windows-x86_64/);
+  fs.unlinkSync(path.join(root, `${names[0]}.sig`));
+  assert.throws(() => generate(root, tag, version, 'windows-linux'), /Missing signed updater target/);
+});
+
+test('Windows/Linux scope rejects unexpected signed macOS or Linux packages', t => {
+  for (const name of [names[1], names[2], 'Deltamod_2.0.18_amd64.deb']) {
+    const root = artifacts(t, [names[0], name]);
+    assert.throws(() => generate(root, tag, version, 'windows-linux'), /outside release profile|Unsupported signed updater artifact/);
+  }
+});
+
+test('manifest CLI selects the Windows/Linux profile', t => {
+  const root = artifacts(t, [names[0]]);
+  const output = path.join(root, 'latest.json');
+  const result = spawnSync(process.execPath, [path.join(source, 'scripts/generate-tauri-updater-manifest.js'), root, tag, output, version, 'windows-linux'], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(output, 'utf8')).platforms), ['windows-x86_64']);
+});
