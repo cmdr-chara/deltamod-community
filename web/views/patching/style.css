@@ -117,5 +117,10 @@ small {
 /* Keep the original centered patching composition and theme. */
 .patch-progress-info { display:flex; justify-content:space-between; gap:12px; color:var(--muted-text); font-size:var(--font-size-meta); }
 #patch-progress { display:block; width:100%; height:8px; margin:10px 0 18px; accent-color:var(--theme-color); }
+.patch-status-panel { width:min(600px,calc(100vw - 72px)); padding-bottom:70px; }
+.patch-stage-info { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-block:16px 6px; }
+.patch-current-item { display:block; min-height:1.5em; overflow-wrap:anywhere; color:var(--muted-text); font-family:system-ui,sans-serif; font-size:13px; }
+.patch-log-heading { margin-block:16px 4px; font-size:16px; }
+.patch-log-limit { color:var(--muted-text); font-size:12px; margin-top:6px; }
 .logs { width:min(600px,calc(100vw - 72px)); margin:10px 0; height:240px; font-size:13px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(prefers-reduced-motion:reduce) { .rotate { animation:none !important; } }

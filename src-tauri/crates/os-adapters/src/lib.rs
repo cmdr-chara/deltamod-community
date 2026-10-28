@@ -361,6 +361,16 @@ pub trait ChoiceBackend {
         message: &str,
         choices: &[String],
     ) -> Result<Option<usize>, AdapterError>;
+    /// Renderer alerts are already localized and can contain provider-owned
+    /// text. Backends with automatic UI translation must preserve these values.
+    fn choose_literal(
+        &self,
+        title: &str,
+        message: &str,
+        choices: &[String],
+    ) -> Result<Option<usize>, AdapterError> {
+        self.choose(title, message, choices)
+    }
 }
 pub trait ExternalOpener {
     fn open(&self, url: &Url) -> Result<(), AdapterError>;
@@ -391,10 +401,21 @@ pub mod tauri_adapter {
     const NEXT_LABEL: &str = "Next";
     const CANCEL_LABEL: &str = "Cancel";
 
+    #[cfg(test)]
     fn choose_with_native_dialog(
         choices: &[String],
+        show: impl FnMut(MessageDialogButtons) -> MessageDialogResult,
+    ) -> Result<Option<usize>, AdapterError> {
+        choose_localized(choices, str::to_owned, show)
+    }
+
+    fn choose_localized(
+        choices: &[String],
+        translate: fn(&str) -> String,
         mut show: impl FnMut(MessageDialogButtons) -> MessageDialogResult,
     ) -> Result<Option<usize>, AdapterError> {
+        let next = translate(NEXT_LABEL);
+        let cancel = translate(CANCEL_LABEL);
         if choices.is_empty() || choices.len() > 256 {
             return Err(AdapterError::InvalidDialog);
         }
@@ -402,21 +423,21 @@ pub mod tauri_adapter {
         // results contain only their label, so reserve distinct navigation labels
         // even when a choice itself is named "Next" or "Cancel".
         for (index, choice) in choices.iter().enumerate() {
-            let selection_label = if choice == NEXT_LABEL || choice == CANCEL_LABEL {
-                format!("Select {choice}")
+            let selection_label = if choice == &next || choice == &cancel {
+                translate("Select {0}").replace("{0}", choice)
             } else {
                 choice.clone()
             };
             let result = show(MessageDialogButtons::YesNoCancelCustom(
                 selection_label.clone(),
-                NEXT_LABEL.to_owned(),
-                CANCEL_LABEL.to_owned(),
+                next.clone(),
+                cancel.clone(),
             ));
             match result {
                 MessageDialogResult::Cancel => return Ok(None),
-                MessageDialogResult::Custom(value) if value == CANCEL_LABEL => return Ok(None),
+                MessageDialogResult::Custom(value) if value == cancel => return Ok(None),
                 MessageDialogResult::No => continue,
-                MessageDialogResult::Custom(value) if value == NEXT_LABEL => continue,
+                MessageDialogResult::Custom(value) if value == next => continue,
                 MessageDialogResult::Yes => return Ok(Some(index)),
                 MessageDialogResult::Custom(value) if value == selection_label => {
                     return Ok(Some(index));
@@ -430,6 +451,7 @@ pub mod tauri_adapter {
 
     pub struct TauriDialogBackend<'a, R: Runtime, M: Manager<R>> {
         manager: &'a M,
+        translate: fn(&str) -> String,
         _runtime: std::marker::PhantomData<R>,
     }
 
@@ -437,14 +459,42 @@ pub mod tauri_adapter {
         pub fn new(manager: &'a M) -> Self {
             Self {
                 manager,
+                translate: str::to_owned,
                 _runtime: std::marker::PhantomData,
             }
         }
     }
 
+    impl<'a, R: Runtime, M: Manager<R>> TauriDialogBackend<'a, R, M> {
+        pub fn with_translator(mut self, translate: fn(&str) -> String) -> Self {
+            self.translate = translate;
+            self
+        }
+
+        fn choose_message(
+            &self,
+            title: &str,
+            message: &str,
+            choices: &[String],
+        ) -> Result<Option<usize>, AdapterError> {
+            choose_localized(choices, self.translate, |buttons| {
+                self.manager
+                    .dialog()
+                    .message(message)
+                    .title(title)
+                    .buttons(buttons)
+                    .blocking_show_with_result()
+            })
+        }
+    }
+
     impl<R: Runtime, M: Manager<R>> DialogBackend for TauriDialogBackend<'_, R, M> {
         fn pick(&self, request: &DialogRequest) -> Result<Option<PathBuf>, AdapterError> {
-            let mut builder = self.manager.dialog().file().set_title(&request.title);
+            let mut builder = self
+                .manager
+                .dialog()
+                .file()
+                .set_title((self.translate)(&request.title));
             if let Some(default_path) = &request.default_path {
                 builder = builder.set_directory(default_path);
             }
@@ -454,7 +504,7 @@ pub mod tauri_adapter {
                     .iter()
                     .map(String::as_str)
                     .collect::<Vec<_>>();
-                builder = builder.add_filter(&filter.name, &extensions);
+                builder = builder.add_filter((self.translate)(&filter.name), &extensions);
             }
             let selected = match request.kind {
                 DialogKind::File | DialogKind::AppBundle => builder.blocking_pick_file(),
@@ -477,14 +527,20 @@ pub mod tauri_adapter {
             message: &str,
             choices: &[String],
         ) -> Result<Option<usize>, AdapterError> {
-            choose_with_native_dialog(choices, |buttons| {
-                self.manager
-                    .dialog()
-                    .message(message)
-                    .title(title)
-                    .buttons(buttons)
-                    .blocking_show_with_result()
-            })
+            self.choose_message(
+                &(self.translate)(title),
+                &(self.translate)(message),
+                choices,
+            )
+        }
+
+        fn choose_literal(
+            &self,
+            title: &str,
+            message: &str,
+            choices: &[String],
+        ) -> Result<Option<usize>, AdapterError> {
+            self.choose_message(title, message, choices)
         }
     }
 
@@ -579,6 +635,42 @@ pub mod tauri_adapter {
                 assert_eq!(advanced.unwrap(), Some(1));
                 assert_eq!(calls, 2);
             }
+        }
+
+        #[test]
+        fn localized_navigation_preserves_literal_choices_and_reserved_label_selection() {
+            fn japanese(source: &str) -> String {
+                match source {
+                    "Next" => "次へ",
+                    "Cancel" => "キャンセル",
+                    "Select {0}" => "{0}を選択",
+                    _ => panic!("provider-owned choice must not be translated: {source}"),
+                }
+                .to_owned()
+            }
+            for choice in ["Options", "次へ", "キャンセル"] {
+                let result = choose_localized(&[choice.to_owned()], japanese, |buttons| {
+                    let (select, next, cancel) = labels(buttons);
+                    assert_eq!(next, "次へ");
+                    assert_eq!(cancel, "キャンセル");
+                    assert_eq!(
+                        select,
+                        if choice == "Options" {
+                            choice.to_owned()
+                        } else {
+                            format!("{choice}を選択")
+                        }
+                    );
+                    assert_ne!(select, next);
+                    assert_ne!(select, cancel);
+                    MessageDialogResult::Custom(select)
+                });
+                assert_eq!(result.unwrap(), Some(0));
+            }
+            let cancelled = choose_localized(&["Options".to_owned()], japanese, |buttons| {
+                MessageDialogResult::Custom(labels(buttons).2)
+            });
+            assert_eq!(cancelled.unwrap(), None);
         }
 
         #[test]

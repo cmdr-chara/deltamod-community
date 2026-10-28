@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { AnimatedPixelHeart } from "./AnimatedPixelHeart";
 import "./DeltamodBootScreen.css";
@@ -24,6 +24,10 @@ export type DeltamodBootScreenProps = {
 };
 
 const CELL_COUNT = 32;
+const bootText = (source: string) => window.Localization?.text(source) ?? source;
+const bootPercent = (value: number) => window.Localization?.number(value, {
+  style: "percent", maximumFractionDigits: 0, minimumIntegerDigits: 3,
+}) ?? `${Math.round(value * 100).toString().padStart(3, "0")}%`;
 
 const STATUS_STEPS = [
   { threshold: 0, text: "Starting local runtime" },
@@ -89,6 +93,18 @@ export function DeltamodBootScreen({
   readyVideoElementId,
   onReady,
 }: DeltamodBootScreenProps) {
+  const [, refreshLocale] = useState(0);
+  useEffect(() => {
+    let disposed = false;
+    const refresh = () => { if (!disposed) refreshLocale(value => value + 1); };
+    window.addEventListener("deltamod-language-change", refresh);
+    void window.Localization?.ready.then(refresh);
+    return () => {
+      disposed = true;
+      window.removeEventListener("deltamod-language-change", refresh);
+    };
+  }, []);
+
   const rootRef = useRef<HTMLElement>(null);
   const effectsCanvasRef = useRef<HTMLCanvasElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
@@ -466,9 +482,9 @@ export function DeltamodBootScreen({
       });
       root.dataset.tick = Math.floor(now / 68) % 2 === 0 ? "on" : "off";
 
-      const desiredStatus = ready
+      const desiredStatus = bootText(ready
         ? "Ready"
-        : statusPropRef.current || statusForProgress(displayedProgress);
+        : statusPropRef.current || statusForProgress(displayedProgress));
       if (desiredStatus !== previousStatus) {
         previousStatus = desiredStatus;
         statusChangedAt = now;
@@ -478,15 +494,14 @@ export function DeltamodBootScreen({
         const characterCount = reduceMotion.matches || !autoPlay
           ? desiredStatus.length
           : Math.floor((now - statusChangedAt) / 24);
-        const typed = desiredStatus.slice(0, characterCount);
-        const cursor = characterCount < desiredStatus.length ? "_" : "";
+        const characters = Array.from(desiredStatus);
+        const typed = characters.slice(0, characterCount).join("");
+        const cursor = characterCount < characters.length ? "_" : "";
         statusRef.current.textContent = `${typed}${cursor}`;
       }
 
       if (percentRef.current) {
-        percentRef.current.textContent = `${Math.round(displayedProgress * 100)
-          .toString()
-          .padStart(3, "0")}%`;
+        percentRef.current.textContent = bootPercent(displayedProgress);
       }
 
       root.dataset.lock =
@@ -605,8 +620,8 @@ export function DeltamodBootScreen({
       data-glitch="off"
       data-tick="off"
       data-video={backgroundVideo ? "on" : "off"}
-      data-version={version}
-      aria-label="Deltamod loading screen"
+      data-version={version === "COMMUNITY BUILD" ? bootText("COMMUNITY BUILD") : version}
+      aria-label={bootText("Deltamod loading screen")}
     >
       <div className="db-scene-base" aria-hidden="true">
         {backgroundVideo && autoPlay ? (
@@ -638,7 +653,7 @@ export function DeltamodBootScreen({
       />
 
       <main className="db-main">
-        <h1 className="db-visually-hidden">Starting Deltamod</h1>
+        <h1 className="db-visually-hidden">{bootText("Starting Deltamod")}</h1>
 
         <div className="db-sequence">
           <div className="db-emblem-stage">
@@ -655,7 +670,7 @@ export function DeltamodBootScreen({
           <div className="db-loading">
             <div className="db-status-line">
               <span ref={statusRef} className="db-status" aria-live="polite" />
-              <span ref={percentRef} className="db-percent">000%</span>
+              <span ref={percentRef} className="db-percent">{bootPercent(0)}</span>
             </div>
             <div className="db-progress" aria-hidden="true">
               {Array.from({ length: CELL_COUNT }, (_, index) => (

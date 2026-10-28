@@ -1,19 +1,19 @@
 <div class="content-page shop-page">
     <div class="tspandiv">
         <img alt="" width="32" height="32" id="gbPic" hidden>
-        <label class="shop-source-label" for="modGameSelect">Game</label>
-        <select id="modGameSelect" title="Choose which game's catalogue to browse" aria-label="Game catalogue"></select>
-        <label class="shop-source-label" for="modSourceSelect">Source</label>
-        <select id="modSourceSelect" title="Choose a mod catalogue" aria-label="Mod catalogue"></select>
-        <button id="modShopHomeButton" class="shop-toolbar-icon-button" onclick="page('main')" title="Return home" aria-label="Return home">
+        <label class="shop-source-label" for="modGameSelect" data-i18n="shop_ui_game">Game</label>
+        <select id="modGameSelect" title="Choose which game's catalogue to browse" aria-label="Game catalogue" data-i18n-title="shop_ui_choose_which_game_s_catalogue_to_browse" data-i18n-aria-label="shop_ui_game_catalogue"></select>
+        <label class="shop-source-label" for="modSourceSelect" data-i18n="shop_ui_source">Source</label>
+        <select id="modSourceSelect" title="Choose a mod catalogue" aria-label="Mod catalogue" data-i18n-title="shop_ui_choose_a_mod_catalogue" data-i18n-aria-label="shop_ui_mod_catalogue"></select>
+        <button id="modShopHomeButton" class="shop-toolbar-icon-button" onclick="page('main')" title="Return home" aria-label="Return home" data-i18n-title="shop_ui_return_home" data-i18n-aria-label="shop_ui_return_home">
             <svg class="shop-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="m4 11 8-7 8 7"></path>
                 <path d="M6.5 10v9h11v-9M10 19v-5h4v5"></path>
             </svg>
         </button>
         <div class="autocomplete">
-            <input type="text" id="searchInput" placeholder="$$shop_search$$">
-            <button type="button" id="clearModSearchButton" class="shop-search-clear" title="Clear search" aria-label="Clear search" hidden>
+            <input type="text" id="searchInput" placeholder="$$shop_search$$" data-i18n-placeholder="shop_search">
+            <button type="button" id="clearModSearchButton" class="shop-search-clear" title="Clear search" aria-label="Clear search" hidden data-i18n-title="shop_ui_clear_search" data-i18n-aria-label="shop_ui_clear_search">
                 <svg class="shop-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <path d="m7 7 10 10M17 7 7 17"></path>
                 </svg>
@@ -22,26 +22,26 @@
 
             </div>
         </div>
-        <button class="shop-toolbar-icon-button" id="modShopSearchButton" onclick="window.currentPageStack.search()" title="Search mods" aria-label="Search mods">
+        <button class="shop-toolbar-icon-button" id="modShopSearchButton" onclick="window.currentPageStack.search()" title="Search mods" aria-label="Search mods" data-i18n-title="shop_ui_search_mods" data-i18n-aria-label="shop_ui_search_mods">
             <svg class="shop-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <circle cx="11" cy="11" r="6.5"></circle>
                 <path d="m16 16 4 4"></path>
             </svg>
         </button>
         <div id="gamebananaFilterControls" class="shop-filter-controls">
-            <label class="content-filter-label" for="contentRatingFilter">Content</label>
-            <select id="contentRatingFilter" title="Filter GameBanana content ratings">
-                <option value="all">Show all</option>
-                <option value="unrated">Hide content-rated</option>
-                <option value="rated">Only content-rated</option>
+            <label class="content-filter-label" for="contentRatingFilter" data-i18n="shop_ui_content">Content</label>
+            <select id="contentRatingFilter" title="Filter GameBanana content ratings" data-i18n-title="shop_ui_filter_gamebanana_content_ratings">
+                <option value="all" data-i18n="shop_ui_show_all">Show all</option>
+                <option value="unrated" data-i18n="shop_ui_hide_content_rated">Hide content-rated</option>
+                <option value="rated" data-i18n="shop_ui_only_content_rated">Only content-rated</option>
             </select>
         </div>
         <div id="nexusSortControls" class="shop-filter-controls" hidden>
-            <label class="content-filter-label" for="nexusSort">Sort</label>
-            <select id="nexusSort" title="Sort Nexus Mods">
-                <option value="trending">Popular</option>
-                <option value="latest_added">Latest added</option>
-                <option value="latest_updated">Latest updated</option>
+            <label class="content-filter-label" for="nexusSort" data-i18n="shop_ui_sort">Sort</label>
+            <select id="nexusSort" title="Sort Nexus Mods" data-i18n-title="shop_ui_sort_nexus_mods">
+                <option value="trending" data-i18n="shop_ui_popular">Popular</option>
+                <option value="latest_added" data-i18n="shop_ui_latest_added">Latest added</option>
+                <option value="latest_updated" data-i18n="shop_ui_latest_updated">Latest updated</option>
             </select>
         </div>
     </div>
@@ -50,28 +50,28 @@
     <p id="sourceAttribution" class="calibri source-attribution"></p>
     <section id="modDownloadStatus" class="mod-download-status calibri" hidden aria-live="polite" aria-atomic="true">
         <div class="mod-download-status-heading">
-            <strong id="modDownloadStatusTitle">Downloading mod…</strong>
+            <strong id="modDownloadStatusTitle" data-i18n="shop_ui_downloading_mod">Downloading mod…</strong>
             <span id="modDownloadStatusPercent">0%</span>
         </div>
         <div class="mod-download-status-details">
             <span id="modDownloadStatusItem"></span>
             <span id="modDownloadStatusBytes"></span>
         </div>
-        <div id="modDownloadProgressTrack" class="mod-download-progress-track" role="progressbar" aria-label="Mod download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="modDownloadProgressTrack" class="mod-download-progress-track" role="progressbar" aria-label="Mod download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-aria-label="shop_ui_mod_download_progress">
             <span id="modDownloadProgressBar"></span>
         </div>
     </section>
     <table>
         <colgroup>
-            <col style="width: calc(100% - 200px);">
-            <col style="width: 200px;">
+            <col style="width: calc(100% - 240px);">
+            <col style="width: 240px;">
         </colgroup>
         <thead>
             <tr>
-                <th>
+                <th data-i18n="mod">
                     $$mod$$
                 </th>
-                <th>
+                <th data-i18n="actions">
                     $$actions$$
                 </th>
             </tr>
@@ -94,40 +94,40 @@
     <div class="mod-image-lightbox-shell">
         <header class="mod-image-lightbox-header">
             <div class="mod-image-lightbox-heading">
-                <h2 id="modImageLightboxTitle">Image preview</h2>
+                <h2 id="modImageLightboxTitle" data-i18n="shop_ui_image_preview">Image preview</h2>
                 <span id="modImageLightboxCounter" class="calibri"></span>
             </div>
-            <div class="mod-image-lightbox-controls" aria-label="Image controls">
-                <button type="button" id="modImageZoomOut" title="Zoom out" aria-label="Zoom out">
+            <div class="mod-image-lightbox-controls" aria-label="Image controls" data-i18n-aria-label="shop_ui_image_controls">
+                <button type="button" id="modImageZoomOut" title="Zoom out" aria-label="Zoom out" data-i18n-title="shop_ui_zoom_out" data-i18n-aria-label="shop_ui_zoom_out">
                     <span class="material-symbols-outlined">zoom_out</span>
                 </button>
                 <output id="modImageZoomLevel" class="calibri" aria-live="polite">100%</output>
-                <button type="button" id="modImageZoomIn" title="Zoom in" aria-label="Zoom in">
+                <button type="button" id="modImageZoomIn" title="Zoom in" aria-label="Zoom in" data-i18n-title="shop_ui_zoom_in" data-i18n-aria-label="shop_ui_zoom_in">
                     <span class="material-symbols-outlined">zoom_in</span>
                 </button>
-                <button type="button" id="modImageZoomReset" title="Reset zoom" aria-label="Reset zoom">
+                <button type="button" id="modImageZoomReset" title="Reset zoom" aria-label="Reset zoom" data-i18n-title="shop_ui_reset_zoom" data-i18n-aria-label="shop_ui_reset_zoom">
                     <span class="material-symbols-outlined">fit_screen</span>
                 </button>
-                <button type="button" id="modImageLightboxClose" title="Close image preview" aria-label="Close image preview">
+                <button type="button" id="modImageLightboxClose" title="Close image preview" aria-label="Close image preview" data-i18n-title="shop_ui_close_image_preview" data-i18n-aria-label="shop_ui_close_image_preview">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
         </header>
         <div class="mod-image-lightbox-stage">
-            <button type="button" id="modImagePrevious" class="mod-image-nav" title="Previous image" aria-label="Previous image">
+            <button type="button" id="modImagePrevious" class="mod-image-nav" title="Previous image" aria-label="Previous image" data-i18n-title="shop_ui_previous_image" data-i18n-aria-label="shop_ui_previous_image">
                 <span class="material-symbols-outlined">chevron_left</span>
             </button>
             <div id="modImageViewport" class="mod-image-lightbox-viewport">
                 <img id="modImageLightboxImage" src="" alt="">
             </div>
-            <button type="button" id="modImageNext" class="mod-image-nav" title="Next image" aria-label="Next image">
+            <button type="button" id="modImageNext" class="mod-image-nav" title="Next image" aria-label="Next image" data-i18n-title="shop_ui_next_image" data-i18n-aria-label="shop_ui_next_image">
                 <span class="material-symbols-outlined">chevron_right</span>
             </button>
         </div>
-        <div id="modImageLightboxThumbnails" class="mod-image-lightbox-thumbnails" aria-label="Image thumbnails"></div>
+        <div id="modImageLightboxThumbnails" class="mod-image-lightbox-thumbnails" aria-label="Image thumbnails" data-i18n-aria-label="shop_ui_image_thumbnails"></div>
     </div>
 </dialog>
 JSL
 STYLESHEET[indx]
 AUDIO[views/gamebanana-browse/leshop.mp3]
-TITLE[Mod Shop]
+TITLE[$$shop_ui_mod_shop$$]

@@ -193,7 +193,7 @@ fn html_alert<D: ChoiceBackend>(dialogs: &D, data: &[Value]) -> Result<Value, St
         })
         .collect::<Result<Vec<_>, _>>()?;
     let selected = dialogs
-        .choose(title, message, &choices)
+        .choose_literal(title, message, &choices)
         .map_err(|_| error::internal())?
         .unwrap_or(choices.len() - 1);
     Ok(json!(selected))
@@ -492,6 +492,39 @@ mod tests {
     #[test]
     fn native_html_alert_maps_window_close_to_the_last_button() {
         assert_eq!(html_alert(&Choices(None), &payload()).unwrap(), json!(1));
+    }
+
+    #[test]
+    fn native_html_alert_preserves_renderer_and_provider_literals() {
+        struct LiteralChoices;
+        impl ChoiceBackend for LiteralChoices {
+            fn choose(
+                &self,
+                _title: &str,
+                _message: &str,
+                _choices: &[String],
+            ) -> Result<Option<usize>, AdapterError> {
+                panic!("renderer alerts must not enter automatic native translation")
+            }
+
+            fn choose_literal(
+                &self,
+                title: &str,
+                message: &str,
+                choices: &[String],
+            ) -> Result<Option<usize>, AdapterError> {
+                assert_eq!(title, "Options");
+                assert_eq!(message, "Comments");
+                assert_eq!(choices, ["Download", "Cancel"]);
+                Ok(Some(0))
+            }
+        }
+        let input = vec![
+            json!("Options"),
+            json!("Comments"),
+            json!([{"text":"Download"},{"text":"Cancel"}]),
+        ];
+        assert_eq!(html_alert(&LiteralChoices, &input).unwrap(), json!(0));
     }
 
     #[test]

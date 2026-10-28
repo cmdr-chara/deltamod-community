@@ -1,1364 +1,113 @@
+// Copyright © 2026 cmdr-chara. Original Community localization implementation.
+// Licensed under the EUPL 1.2. Existing public localization API is preserved.
 (() => {
+    'use strict';
     const DEFAULT_LANGUAGE = 'en';
     const SUPPORTED_LANGUAGES = Object.freeze([
-        'en',
-        'it',
-        'pl',
-        'es',
-        'fr',
-        'de',
-        'pt-br',
-        'ja'
+        'en', 'it', 'pl', 'es', 'fr', 'de', 'pt-br', 'ja', 'ru',
+        'zh-CN', 'zh-TW', 'ko', 'tr', 'es-419', 'uk', 'th', 'ar'
     ]);
     const STORAGE_KEY = 'deltamodCommunityLanguage';
+    const CATALOG_BASE = document.currentScript?.src ? new URL('../langs/', document.currentScript.src).href : './langs/';
     const dictionaries = new Map();
     const metadata = new Map();
-
-    const communityStrings = Object.freeze({
-        en: {
-            optcat_mac: "Mac",
-            mac_credits: "Credits",
-            mac_credit_name: "Mac support by {0}",
-            mac_credit_desc: "Made mod downloading and patching work on macOS.",
-            mac_how_title: "How Mac support works",
-            mac_automatic: "Automatic",
-            mac_downloads: "Downloading mods",
-            mac_downloads_desc: "GameBanana mods packaged for Deltamod or Deltahub download directly. Deltahub packages do not say which chapter they patch, so Deltamod suggests one from the mod's files and asks you to confirm.",
-            mac_copy: "Your game stays untouched",
-            mac_copy_value: "Separate copy",
-            mac_copy_desc: "When you add DELTARUNE, Deltamod copies DELTARUNE.app into its own folder and only ever changes that copy. The game in your Applications folder stays exactly as it was.",
-            mac_reference_value: "Options → Installation",
-            mac_reference_desc: "Most mods are made for the Windows game files, and the Mac files are packed differently, so mods cannot be applied to them directly. Deltamod applies each mod to your unmodified Windows data.win file and installs the result in the copy as game.ios. Mods that only replace files, such as music, do not need these.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod installs your enabled mods into the copy, re-signs it so macOS accepts the changed files, and starts it. When the game closes, the original files are put back.",
-            mac_saves: "Save files",
-            mac_saves_value: "Shared",
-            mac_saves_desc: "The copy and your original game use the same saves in ~/Library/Application Support/com.tobyfox.deltarune. Back them up before trying new mods.",
-            mac_unsupported: "Not supported yet",
-            mac_unsupported_value: ".csx scripts",
-            mac_unsupported_desc: "Script mods need UndertaleModTool, which has no Apple Silicon version yet.",
-            reference_files: "Windows reference files",
-            reference_stored: "Stored files",
-            reference_none: "None yet",
-            reference_all: "All chapters",
-            reference_chapter_select: "Chapter select",
-            reference_chapter: "Chapter {0}",
-            reference_chapters: "Chapters {0}",
-            reference_short: "Ch. {0}",
-            reference_stored_list: "Stored: {0}.",
-            reference_desc: "Most mods are made for the Windows version of the game. On this computer, Deltamod applies them to your unmodified Windows game files and installs the result into its own copy of the game.",
-            reference_add: "Add Windows reference files",
-            reference_replace: "Replace Windows reference files",
-            reference_choose_desc: "Choose the Windows game folder that contains DELTARUNE.exe and the chapter1_windows, chapter2_windows, … folders. Only the data.win files are copied. Use the same game version your mods target.",
-            reference_choose: "Choose folder",
-            reference_not_found: "No Windows game files found",
-            refine_load_failed: "Could not load the mod list.",
-            refine_retry: "Retry",
-            shop_next_page_failed: "The next page could not be loaded. Your current results are still here.",
-            refine_search_mods: "Search mods",
-            refine_search_hint: "Name, author, version or package ID",
-            refine_clear: "Clear",
-            refine_mod_count: "{0} of {1} mods",
-            refine_no_matches: "No matching mods. Clear the search or change the filter.",
-            refine_saving: "Saving…",
-            refine_saved: "Saved",
-            refine_save_failed: "Not saved. Try again.",
-            refine_progress: "Progress",
-            refine_patch_complete: "Patching complete!",
-            refine_patch_log: "Patch log",
-
-            community_options_subtitle: 'Configure Community without changing the official Deltamod profile.',
-            optcat_data: 'Data',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Choose the language used by Deltamod Community. New Community features may fall back to English until their translations are updated.',
-            language_current: 'Current language',
-            language_select_hint: 'Select language',
-            language_restart_note: 'The current page refreshes immediately after changing language.',
-            theme_count: '{0} of {1} themes',
-            language_switcher_label: 'Change language',
-            community_allmods_subtitle: 'Browse and manage installed packages.',
-            community_installmanager_subtitle: 'Manage isolated game profiles. Community never writes to the official Deltamod profile.',
-            deleteall_description: 'This deletes only Deltamod Community data. Official Deltamod data is not touched.',
-            locate_desc: 'To use Deltamod Community, locate a supported game installation.',
-            main_empty_title: 'Your patch list is ready',
-            main_empty_desc: 'Import a compatible mod package or browse the Mod Shop. Installed mods will appear here before anything touches the game files.',
-            allmods_empty_title: 'No installed mods yet',
-            allmods_empty_desc: 'Packages you download or import will stay visible here, even when they are not enabled in the current patch list.',
-            browse_mod_shop: 'Browse Mod Shop',
-            import_mod_package: 'Import mod package',
-            community_delete_data_title: 'Delete all Community data',
-            community_delete_data_desc: 'Deletes Community installations, mods, and options. Official Deltamod data is not changed.',
-            community_hash_title: 'Enable hash checks',
-            community_hash_desc: 'Checks mod hashes for compatibility. This may make scans slower.',
-            community_dynamic_music_title: 'Enable dynamic music',
-            community_dynamic_music_desc: 'Changes the background music based on the current page.',
-            community_music_volume_title: 'Music volume',
-            community_music_volume_desc: 'Adjusts the volume of menu and theme music.',
-            community_alert_alignment: 'Alert alignment',
-            community_seasonal_title: 'Seasonal details',
-            community_seasonal_desc: 'Adds calendar-based pixel details without replacing the active theme. Choose an event to preview it.',
-            seasonal_auto: 'Automatic',
-            seasonal_off: 'Off',
-            seasonal_womens_health: "Women's Health",
-            seasonal_mens_health: "Men's Health",
-            seasonal_easter: 'Easter',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Christmas',
-            seasonal_new_year: 'New Year',
-            theme_intro: 'Change the background, accent color, and menu music together.',
-            theme_create: 'Create theme',
-            theme_search: 'Search themes',
-            theme_workshop: 'Theme workshop',
-            theme_custom_title: 'Create a custom theme',
-            theme_custom_description: 'Set its identity here, then choose the background and optional soundtrack.',
-            theme_creation_steps: 'Creation steps',
-            theme_step_identity: 'Identity',
-            theme_step_background: 'Background',
-            theme_step_music: 'Music',
-            theme_name_placeholder: 'My theme',
-            theme_description_label: 'Description',
-            theme_optional: 'Optional',
-            theme_description_placeholder: 'What is this theme based on?',
-            theme_main_color: 'Main color',
-            theme_color_aria: 'Theme main color',
-            theme_color_help: 'Used for controls, accents, and the taskbar gear.',
-            theme_soundtrack_title: 'Add a custom soundtrack',
-            theme_soundtrack_help: 'MP3 or OGG. You will choose it after the background.',
-            theme_icon_preview: 'Application icon preview',
-            theme_taskbar_preview: 'Taskbar preview',
-            theme_soul_color: 'SOUL color',
-            theme_cancel: 'Cancel',
-            theme_continue_background: 'Continue to background',
-            theme_available: 'Available themes',
-            theme_no_matches: 'No matching themes',
-            theme_no_matches_hint: 'Try a different name, description, or music track.',
-            theme_filter_placeholder: 'Name, description, or music',
-            theme_background_preview: '{0} background preview',
-            theme_accent_colors: 'UI accent: {0}; SOUL color: {1}',
-            theme_accent_only: 'Theme accent: {0}',
-            theme_built_in: 'Built-in',
-            theme_custom: 'Custom',
-            theme_credits: 'Credits',
-            theme_edit_name: 'Click to edit the theme name',
-            theme_edit_description: 'Click to edit the description',
-            theme_in_use: 'In use',
-            theme_use: 'Use theme',
-            theme_delete: 'Delete',
-            theme_delete_confirm: 'Delete "{0}"? This cannot be undone.',
-            theme_name_required: 'Enter a name for the theme.',
-            theme_choose_background: 'Choose a background image.',
-            theme_choose_background_music: 'Choose a background image, then choose the music file.',
-            theme_import_canceled: 'Import canceled. No theme files were copied.',
-            theme_import_failed: 'Theme import failed: {0}',
-            theme_unknown_error: 'Unknown error',
-            allmods_unnamed: 'Unnamed mod',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'No ID was specified.',
-            allmods_variants: '{0} variants',
-            allmods_compatible: 'Compatible with current version',
-            allmods_incompatible: 'Incompatible: {0}',
-            allmods_gamebanana: 'Installed through GameBanana',
-            allmods_cant_like: "Can't like mod",
-            allmods_already_liked: "You've already liked this mod. Can't get any more likes than that!",
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Like this mod on GameBanana',
-            allmods_comment_leave: 'Leave a comment on GameBanana',
-            allmods_comment_view: 'View the GameBanana comments for this mod',
-            allmods_mod_id: "Mod ID '{0}'",
-            allmods_no_installation_match: 'No mods match this installation',
-            allmods_choose_installation: 'Choose another installation above or return to All installations.'
-        },
-        it: {
-            optcat_mac: "Mac",
-            mac_credits: "Riconoscimenti",
-            mac_credit_name: "Supporto Mac di {0}",
-            mac_credit_desc: "Ha reso possibili il download e la patch delle mod su macOS.",
-            mac_how_title: "Come funziona il supporto Mac",
-            mac_automatic: "Automatico",
-            mac_downloads: "Download delle mod",
-            mac_downloads_desc: "Le mod di GameBanana pubblicate per Deltamod o Deltahub si scaricano direttamente. I pacchetti Deltahub non indicano quale capitolo modificano, quindi Deltamod ne suggerisce uno in base ai file della mod e ti chiede di confermare.",
-            mac_copy: "Il tuo gioco resta intatto",
-            mac_copy_value: "Copia separata",
-            mac_copy_desc: "Quando aggiungi DELTARUNE, Deltamod copia DELTARUNE.app in una sua cartella e modifica solo quella copia. Il gioco nella cartella Applicazioni resta esattamente com'era.",
-            mac_reference_value: "Opzioni → Installazione",
-            mac_reference_desc: "La maggior parte delle mod è creata per i file Windows del gioco e i file Mac sono impacchettati diversamente, quindi le mod non si possono applicare direttamente. Deltamod applica ogni mod al tuo file data.win di Windows non modificato e installa il risultato nella copia come game.ios. Le mod che sostituiscono solo file, come la musica, non ne hanno bisogno.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod installa le mod attive nella copia, la rifirma affinché macOS accetti i file modificati e la avvia. Alla chiusura del gioco i file originali vengono ripristinati.",
-            mac_saves: "Salvataggi",
-            mac_saves_value: "Condivisi",
-            mac_saves_desc: "La copia e il gioco originale usano gli stessi salvataggi in ~/Library/Application Support/com.tobyfox.deltarune. Fanne un backup prima di provare nuove mod.",
-            mac_unsupported: "Non ancora supportato",
-            mac_unsupported_value: "Script .csx",
-            mac_unsupported_desc: "Le mod script richiedono UndertaleModTool, che non ha ancora una versione per Apple Silicon.",
-            reference_files: "File di riferimento Windows",
-            reference_stored: "File salvati",
-            reference_none: "Nessuno",
-            reference_all: "Tutti i capitoli",
-            reference_chapter_select: "Selezione capitoli",
-            reference_chapter: "Capitolo {0}",
-            reference_chapters: "Capitoli {0}",
-            reference_short: "Cap. {0}",
-            reference_stored_list: "Salvati: {0}.",
-            reference_desc: "La maggior parte delle mod è creata per la versione Windows del gioco. Su questo computer Deltamod le applica ai tuoi file Windows non modificati e installa il risultato nella propria copia del gioco.",
-            reference_add: "Aggiungi file di riferimento Windows",
-            reference_replace: "Sostituisci file di riferimento Windows",
-            reference_choose_desc: "Scegli la cartella del gioco Windows che contiene DELTARUNE.exe e le cartelle chapter1_windows, chapter2_windows, … Vengono copiati solo i file data.win. Usa la stessa versione del gioco a cui sono destinate le mod.",
-            reference_choose: "Scegli cartella",
-            reference_not_found: "Nessun file del gioco Windows trovato",
-            refine_load_failed: "Impossibile caricare le mod.",
-            refine_retry: "Riprova",
-            shop_next_page_failed: "Impossibile caricare la pagina successiva. I risultati attuali sono ancora qui.",
-            refine_search_mods: "Cerca mod",
-            refine_search_hint: "Nome, autore, versione o ID del pacchetto",
-            refine_clear: "Cancella",
-            refine_mod_count: "{0} di {1} mod",
-            refine_no_matches: "Nessuna mod corrispondente. Cancella la ricerca o cambia il filtro.",
-            refine_saving: "Salvataggio…",
-            refine_saved: "Salvato",
-            refine_save_failed: "Non salvato. Riprova.",
-            refine_progress: "Avanzamento",
-            refine_patch_complete: "Patch completata!",
-            refine_patch_log: "Registro della patch",
-
-            community_options_subtitle: 'Configura Community senza modificare il profilo ufficiale di Deltamod.',
-            optcat_data: 'Dati',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Scegli la lingua usata da Deltamod Community. Le nuove funzioni Community possono restare in inglese finché le traduzioni non vengono aggiornate.',
-            language_current: 'Lingua attuale',
-            language_select_hint: 'Seleziona lingua',
-            language_restart_note: 'La pagina corrente si aggiorna subito dopo il cambio di lingua.',
-            theme_count: '{0} di {1} temi',
-            language_switcher_label: 'Cambia lingua',
-            community_allmods_subtitle: 'Sfoglia e gestisci i pacchetti installati.',
-            community_installmanager_subtitle: 'Gestisci profili di gioco isolati. Community non modifica mai il profilo ufficiale di Deltamod.',
-            deleteall_description: 'Elimina solo i dati di Deltamod Community. I dati del Deltamod ufficiale non vengono modificati.',
-            locate_desc: 'Per usare Deltamod Community, individua l’installazione di un gioco supportato.',
-            main_empty_title: 'La lista delle patch è pronta',
-            main_empty_desc: 'Importa un pacchetto compatibile o sfoglia il Mod Shop. Le mod installate appariranno qui prima che venga modificato qualsiasi file di gioco.',
-            allmods_empty_title: 'Nessuna mod installata',
-            allmods_empty_desc: 'I pacchetti scaricati o importati resteranno visibili qui anche quando non sono attivi nella lista delle patch.',
-            browse_mod_shop: 'Sfoglia il Mod Shop',
-            import_mod_package: 'Importa pacchetto mod',
-            community_delete_data_title: 'Elimina tutti i dati Community',
-            community_delete_data_desc: 'Elimina installazioni, mod e opzioni di Community. I dati del Deltamod ufficiale non vengono modificati.',
-            community_hash_title: 'Abilita controllo degli hash',
-            community_hash_desc: 'Controlla gli hash delle mod per verificarne la compatibilità. Le scansioni potrebbero essere più lente.',
-            community_dynamic_music_title: 'Abilita musica dinamica',
-            community_dynamic_music_desc: 'Cambia la musica di sottofondo in base alla pagina corrente.',
-            community_music_volume_title: 'Volume musica',
-            community_music_volume_desc: 'Regola il volume della musica dei menu e dei temi.',
-            community_alert_alignment: 'Posizione degli avvisi',
-            community_seasonal_title: 'Dettagli stagionali',
-            community_seasonal_desc: 'Aggiunge dettagli pixel legati al calendario senza sostituire il tema attivo. Scegli un evento per visualizzarlo in anteprima.',
-            seasonal_auto: 'Automatico',
-            seasonal_off: 'Disattivato',
-            seasonal_womens_health: 'Salute femminile',
-            seasonal_mens_health: 'Salute maschile',
-            seasonal_easter: 'Pasqua',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Natale',
-            seasonal_new_year: 'Capodanno',
-            theme_intro: 'Cambia insieme lo sfondo, il colore principale e la musica del menu.',
-            theme_create: 'Crea tema',
-            theme_search: 'Cerca temi',
-            theme_workshop: 'Laboratorio temi',
-            theme_custom_title: 'Crea un tema personalizzato',
-            theme_custom_description: 'Definisci qui la sua identità, poi scegli lo sfondo e una colonna sonora facoltativa.',
-            theme_creation_steps: 'Passaggi di creazione',
-            theme_step_identity: 'Identità',
-            theme_step_background: 'Sfondo',
-            theme_step_music: 'Musica',
-            theme_name_placeholder: 'Il mio tema',
-            theme_description_label: 'Descrizione',
-            theme_optional: 'Facoltativa',
-            theme_description_placeholder: 'A cosa si ispira questo tema?',
-            theme_main_color: 'Colore principale',
-            theme_color_aria: 'Colore principale del tema',
-            theme_color_help: 'Usato per i controlli, gli elementi in evidenza e l’ingranaggio della barra delle applicazioni.',
-            theme_soundtrack_title: 'Aggiungi una colonna sonora personalizzata',
-            theme_soundtrack_help: 'MP3 o OGG. Potrai sceglierla dopo lo sfondo.',
-            theme_icon_preview: 'Anteprima dell’icona dell’applicazione',
-            theme_taskbar_preview: 'Anteprima nella barra delle applicazioni',
-            theme_soul_color: 'Colore dell’ANIMA',
-            theme_cancel: 'Annulla',
-            theme_continue_background: 'Continua allo sfondo',
-            theme_available: 'Temi disponibili',
-            theme_no_matches: 'Nessun tema corrispondente',
-            theme_no_matches_hint: 'Prova un nome, una descrizione o una traccia musicale diversi.',
-            theme_filter_placeholder: 'Nome, descrizione o musica',
-            theme_background_preview: 'Anteprima dello sfondo di {0}',
-            theme_accent_colors: 'Colore interfaccia: {0}; colore ANIMA: {1}',
-            theme_accent_only: 'Colore del tema: {0}',
-            theme_built_in: 'Integrato',
-            theme_custom: 'Personalizzato',
-            theme_credits: 'Riconoscimenti',
-            theme_edit_name: 'Fai clic per modificare il nome del tema',
-            theme_edit_description: 'Fai clic per modificare la descrizione',
-            theme_in_use: 'In uso',
-            theme_use: 'Usa tema',
-            theme_delete: 'Elimina',
-            theme_delete_confirm: 'Eliminare "{0}"? Questa azione non può essere annullata.',
-            theme_name_required: 'Inserisci un nome per il tema.',
-            theme_choose_background: 'Scegli un’immagine di sfondo.',
-            theme_choose_background_music: 'Scegli un’immagine di sfondo, poi il file musicale.',
-            theme_import_canceled: 'Importazione annullata. Nessun file del tema è stato copiato.',
-            theme_import_failed: 'Importazione del tema non riuscita: {0}',
-            theme_unknown_error: 'Errore sconosciuto',
-            allmods_unnamed: 'Mod senza nome',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'Non è stato specificato alcun ID.',
-            allmods_variants: '{0} varianti',
-            allmods_compatible: 'Compatibile con la versione attuale',
-            allmods_incompatible: 'Non compatibile: {0}',
-            allmods_gamebanana: 'Installata tramite GameBanana',
-            allmods_cant_like: 'Impossibile mettere Mi piace alla mod',
-            allmods_already_liked: 'Hai già messo Mi piace a questa mod. Non puoi farlo di nuovo!',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Metti Mi piace alla mod su GameBanana',
-            allmods_comment_leave: 'Lascia un commento su GameBanana',
-            allmods_comment_view: 'Visualizza i commenti della mod su GameBanana',
-            allmods_mod_id: "ID mod '{0}'",
-            allmods_no_installation_match: 'Nessuna mod corrisponde a questa installazione',
-            allmods_choose_installation: 'Scegli un’altra installazione qui sopra o torna a Tutte le installazioni.'
-        },
-        pl: {
-            optcat_mac: "Mac",
-            mac_credits: "Podziękowania",
-            mac_credit_name: "Obsługa Maca: {0}",
-            mac_credit_desc: "Umożliwił pobieranie i nakładanie modów na macOS.",
-            mac_how_title: "Jak działa obsługa Maca",
-            mac_automatic: "Automatycznie",
-            mac_downloads: "Pobieranie modów",
-            mac_downloads_desc: "Mody z GameBanana przygotowane dla Deltamod lub Deltahub pobierają się bezpośrednio. Paczki Deltahub nie podają, który rozdział zmieniają, więc Deltamod proponuje go na podstawie plików moda i prosi o potwierdzenie.",
-            mac_copy: "Twoja gra pozostaje nietknięta",
-            mac_copy_value: "Osobna kopia",
-            mac_copy_desc: "Gdy dodajesz DELTARUNE, Deltamod kopiuje DELTARUNE.app do własnego folderu i zmienia tylko tę kopię. Gra w folderze Aplikacje pozostaje dokładnie taka, jaka była.",
-            mac_reference_value: "Opcje → Instalacja",
-            mac_reference_desc: "Większość modów powstaje dla plików gry z Windows, a pliki na Maca są spakowane inaczej, więc nie da się ich nałożyć bezpośrednio. Deltamod nakłada każdy mod na niezmieniony plik data.win z Windows i instaluje wynik w kopii jako game.ios. Mody, które tylko podmieniają pliki, np. muzykę, ich nie potrzebują.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod instaluje włączone mody w kopii, podpisuje ją ponownie, aby macOS zaakceptował zmienione pliki, i ją uruchamia. Po zamknięciu gry oryginalne pliki zostają przywrócone.",
-            mac_saves: "Zapisy gry",
-            mac_saves_value: "Wspólne",
-            mac_saves_desc: "Kopia i oryginalna gra używają tych samych zapisów w ~/Library/Application Support/com.tobyfox.deltarune. Zrób ich kopię zapasową przed wypróbowaniem nowych modów.",
-            mac_unsupported: "Jeszcze nieobsługiwane",
-            mac_unsupported_value: "Skrypty .csx",
-            mac_unsupported_desc: "Mody ze skryptami wymagają UndertaleModTool, który nie ma jeszcze wersji dla Apple Silicon.",
-            reference_files: "Pliki referencyjne Windows",
-            reference_stored: "Zapisane pliki",
-            reference_none: "Brak",
-            reference_all: "Wszystkie rozdziały",
-            reference_chapter_select: "Wybór rozdziału",
-            reference_chapter: "Rozdział {0}",
-            reference_chapters: "Rozdziały {0}",
-            reference_short: "Rozdz. {0}",
-            reference_stored_list: "Zapisane: {0}.",
-            reference_desc: "Większość modów powstaje dla wersji gry na Windows. Na tym komputerze Deltamod nakłada je na niezmienione pliki gry z Windows i instaluje wynik we własnej kopii gry.",
-            reference_add: "Dodaj pliki referencyjne Windows",
-            reference_replace: "Zastąp pliki referencyjne Windows",
-            reference_choose_desc: "Wybierz folder gry z Windows zawierający DELTARUNE.exe oraz foldery chapter1_windows, chapter2_windows, … Kopiowane są tylko pliki data.win. Użyj tej samej wersji gry, dla której powstały mody.",
-            reference_choose: "Wybierz folder",
-            reference_not_found: "Nie znaleziono plików gry z Windows",
-            refine_load_failed: "Nie udało się wczytać listy modów.",
-            refine_retry: "Spróbuj ponownie",
-            shop_next_page_failed: "Nie udało się wczytać następnej strony. Obecne wyniki są nadal widoczne.",
-            refine_search_mods: "Szukaj modów",
-            refine_search_hint: "Nazwa, autor, wersja lub ID pakietu",
-            refine_clear: "Wyczyść",
-            refine_mod_count: "{0} z {1} modów",
-            refine_no_matches: "Brak pasujących modów. Wyczyść wyszukiwanie lub zmień filtr.",
-            refine_saving: "Zapisywanie…",
-            refine_saved: "Zapisano",
-            refine_save_failed: "Nie zapisano. Spróbuj ponownie.",
-            refine_progress: "Postęp",
-            refine_patch_complete: "Nakładanie modów zakończone!",
-            refine_patch_log: "Dziennik zmian",
-
-            community_options_subtitle: 'Skonfiguruj Community bez zmieniania oficjalnego profilu Deltamod.',
-            optcat_data: 'Dane',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Wybierz język Deltamod Community. Nowe funkcje Community mogą pozostać po angielsku do czasu aktualizacji tłumaczeń.',
-            language_current: 'Bieżący język',
-            language_select_hint: 'Wybierz język',
-            language_restart_note: 'Bieżąca strona odświeży się natychmiast po zmianie języka.',
-            theme_count: '{0} z {1} motywów',
-            language_switcher_label: 'Zmień język',
-            community_allmods_subtitle: 'Przeglądaj zainstalowane pakiety i zarządzaj nimi.',
-            community_installmanager_subtitle: 'Zarządzaj oddzielnymi profilami gier. Community nigdy nie modyfikuje oficjalnego profilu Deltamod.',
-            deleteall_description: 'Usuwa tylko dane Deltamod Community. Dane oficjalnego Deltamod pozostają bez zmian.',
-            locate_desc: 'Aby korzystać z Deltamod Community, wskaż instalację obsługiwanej gry.',
-            main_empty_title: 'Lista patchy jest gotowa',
-            main_empty_desc: 'Zaimportuj kompatybilny pakiet moda lub otwórz Sklep Modów. Zainstalowane mody pojawią się tutaj przed zmianą plików gry.',
-            allmods_empty_title: 'Brak zainstalowanych modów',
-            allmods_empty_desc: 'Pobrane lub zaimportowane pakiety pozostaną tutaj widoczne, nawet gdy nie są włączone na bieżącej liście patchy.',
-            browse_mod_shop: 'Otwórz Sklep Modów',
-            import_mod_package: 'Importuj pakiet moda',
-            community_delete_data_title: 'Usuń wszystkie dane Community',
-            community_delete_data_desc: 'Usuwa instalacje, mody i opcje Community. Dane oficjalnego Deltamod pozostają bez zmian.',
-            community_hash_title: 'Włącz sprawdzanie hashy',
-            community_hash_desc: 'Sprawdza hashe modów pod kątem kompatybilności. Skanowanie może potrwać dłużej.',
-            community_dynamic_music_title: 'Włącz dynamiczną muzykę',
-            community_dynamic_music_desc: 'Zmienia muzykę w tle zależnie od bieżącej strony.',
-            community_music_volume_title: 'Głośność muzyki',
-            community_music_volume_desc: 'Dostosowuje głośność muzyki menu i motywów.',
-            community_alert_alignment: 'Położenie powiadomień',
-            community_seasonal_title: 'Sezonowe detale',
-            community_seasonal_desc: 'Dodaje pikselowe elementy zależne od kalendarza bez zastępowania aktywnego motywu. Wybierz wydarzenie, aby zobaczyć podgląd.',
-            seasonal_auto: 'Automatycznie',
-            seasonal_off: 'Wyłączone',
-            seasonal_womens_health: 'Zdrowie kobiet',
-            seasonal_mens_health: 'Zdrowie mężczyzn',
-            seasonal_easter: 'Wielkanoc',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Boże Narodzenie',
-            seasonal_new_year: 'Nowy Rok',
-            theme_intro: 'Zmień jednocześnie tło, kolor akcentu i muzykę menu.',
-            theme_create: 'Utwórz motyw',
-            theme_search: 'Szukaj motywów',
-            theme_workshop: 'Kreator motywów',
-            theme_custom_title: 'Utwórz własny motyw',
-            theme_custom_description: 'Określ tutaj jego tożsamość, a następnie wybierz tło i opcjonalną ścieżkę dźwiękową.',
-            theme_creation_steps: 'Etapy tworzenia',
-            theme_step_identity: 'Tożsamość',
-            theme_step_background: 'Tło',
-            theme_step_music: 'Muzyka',
-            theme_name_placeholder: 'Mój motyw',
-            theme_description_label: 'Opis',
-            theme_optional: 'Opcjonalnie',
-            theme_description_placeholder: 'Na czym opiera się ten motyw?',
-            theme_main_color: 'Główny kolor',
-            theme_color_aria: 'Główny kolor motywu',
-            theme_color_help: 'Używany w elementach sterujących, akcentach i ikonie koła zębatego na pasku zadań.',
-            theme_soundtrack_title: 'Dodaj własną ścieżkę dźwiękową',
-            theme_soundtrack_help: 'MP3 lub OGG. Wybierzesz ją po wybraniu tła.',
-            theme_icon_preview: 'Podgląd ikony aplikacji',
-            theme_taskbar_preview: 'Podgląd na pasku zadań',
-            theme_soul_color: 'Kolor DUSZY',
-            theme_cancel: 'Anuluj',
-            theme_continue_background: 'Przejdź do tła',
-            theme_available: 'Dostępne motywy',
-            theme_no_matches: 'Brak pasujących motywów',
-            theme_no_matches_hint: 'Spróbuj innej nazwy, opisu lub utworu muzycznego.',
-            theme_filter_placeholder: 'Nazwa, opis lub muzyka',
-            theme_background_preview: 'Podgląd tła motywu {0}',
-            theme_accent_colors: 'Akcent interfejsu: {0}; kolor DUSZY: {1}',
-            theme_accent_only: 'Akcent motywu: {0}',
-            theme_built_in: 'Wbudowany',
-            theme_custom: 'Własny',
-            theme_credits: 'Autorzy',
-            theme_edit_name: 'Kliknij, aby edytować nazwę motywu',
-            theme_edit_description: 'Kliknij, aby edytować opis',
-            theme_in_use: 'Używany',
-            theme_use: 'Użyj motywu',
-            theme_delete: 'Usuń',
-            theme_delete_confirm: 'Usunąć „{0}”? Tej operacji nie można cofnąć.',
-            theme_name_required: 'Wpisz nazwę motywu.',
-            theme_choose_background: 'Wybierz obraz tła.',
-            theme_choose_background_music: 'Wybierz obraz tła, a następnie plik muzyczny.',
-            theme_import_canceled: 'Importowanie anulowano. Nie skopiowano plików motywu.',
-            theme_import_failed: 'Nie udało się zaimportować motywu: {0}',
-            theme_unknown_error: 'Nieznany błąd',
-            allmods_unnamed: 'Mod bez nazwy',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'Nie podano identyfikatora.',
-            allmods_variants: '{0} wariantów',
-            allmods_compatible: 'Zgodny z bieżącą wersją',
-            allmods_incompatible: 'Niezgodny: {0}',
-            allmods_gamebanana: 'Zainstalowano przez GameBanana',
-            allmods_cant_like: 'Nie można polubić moda',
-            allmods_already_liked: 'Ten mod jest już przez Ciebie polubiony. Nie możesz polubić go ponownie!',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Polub ten mod na GameBanana',
-            allmods_comment_leave: 'Dodaj komentarz na GameBanana',
-            allmods_comment_view: 'Wyświetl komentarze tego moda na GameBanana',
-            allmods_mod_id: "Identyfikator moda: '{0}'",
-            allmods_no_installation_match: 'Brak modów dla tej instalacji',
-            allmods_choose_installation: 'Wybierz powyżej inną instalację lub wróć do opcji Wszystkie instalacje.'
-        },
-        es: {
-            optcat_mac: "Mac",
-            mac_credits: "Créditos",
-            mac_credit_name: "Soporte para Mac por {0}",
-            mac_credit_desc: "Hizo que la descarga y el parcheo de mods funcionen en macOS.",
-            mac_how_title: "Cómo funciona el soporte para Mac",
-            mac_automatic: "Automático",
-            mac_downloads: "Descarga de mods",
-            mac_downloads_desc: "Los mods de GameBanana empaquetados para Deltamod o Deltahub se descargan directamente. Los paquetes de Deltahub no indican qué capítulo modifican, así que Deltamod sugiere uno a partir de los archivos del mod y te pide que lo confirmes.",
-            mac_copy: "Tu juego no se modifica",
-            mac_copy_value: "Copia separada",
-            mac_copy_desc: "Al añadir DELTARUNE, Deltamod copia DELTARUNE.app en su propia carpeta y solo modifica esa copia. El juego de tu carpeta Aplicaciones queda exactamente como estaba.",
-            mac_reference_value: "Opciones → Instalación",
-            mac_reference_desc: "La mayoría de los mods se crean para los archivos de Windows del juego, y los archivos de Mac están empaquetados de otra forma, así que no se pueden aplicar directamente. Deltamod aplica cada mod a tu archivo data.win de Windows sin modificar e instala el resultado en la copia como game.ios. Los mods que solo reemplazan archivos, como la música, no los necesitan.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod instala tus mods activos en la copia, la vuelve a firmar para que macOS acepte los archivos modificados y la inicia. Al cerrar el juego se restauran los archivos originales.",
-            mac_saves: "Partidas guardadas",
-            mac_saves_value: "Compartidas",
-            mac_saves_desc: "La copia y tu juego original usan las mismas partidas en ~/Library/Application Support/com.tobyfox.deltarune. Haz una copia de seguridad antes de probar mods nuevos.",
-            mac_unsupported: "Aún no compatible",
-            mac_unsupported_value: "Scripts .csx",
-            mac_unsupported_desc: "Los mods de scripts necesitan UndertaleModTool, que todavía no tiene versión para Apple Silicon.",
-            reference_files: "Archivos de referencia de Windows",
-            reference_stored: "Archivos guardados",
-            reference_none: "Ninguno",
-            reference_all: "Todos los capítulos",
-            reference_chapter_select: "Selector de capítulos",
-            reference_chapter: "Capítulo {0}",
-            reference_chapters: "Capítulos {0}",
-            reference_short: "Cap. {0}",
-            reference_stored_list: "Guardados: {0}.",
-            reference_desc: "La mayoría de los mods se crean para la versión de Windows del juego. En este equipo, Deltamod los aplica a tus archivos de Windows sin modificar e instala el resultado en su propia copia del juego.",
-            reference_add: "Añadir archivos de referencia de Windows",
-            reference_replace: "Reemplazar archivos de referencia de Windows",
-            reference_choose_desc: "Elige la carpeta del juego de Windows que contiene DELTARUNE.exe y las carpetas chapter1_windows, chapter2_windows, … Solo se copian los archivos data.win. Usa la misma versión del juego a la que apuntan tus mods.",
-            reference_choose: "Elegir carpeta",
-            reference_not_found: "No se encontraron archivos del juego de Windows",
-            refine_load_failed: "No se pudo cargar la lista de mods.",
-            refine_retry: "Reintentar",
-            shop_next_page_failed: "No se pudo cargar la página siguiente. Los resultados actuales siguen aquí.",
-            refine_search_mods: "Buscar mods",
-            refine_search_hint: "Nombre, autor, versión o ID del paquete",
-            refine_clear: "Borrar",
-            refine_mod_count: "{0} de {1} mods",
-            refine_no_matches: "No hay mods coincidentes. Borra la búsqueda o cambia el filtro.",
-            refine_saving: "Guardando…",
-            refine_saved: "Guardado",
-            refine_save_failed: "No se ha guardado. Inténtalo de nuevo.",
-            refine_progress: "Progreso",
-            refine_patch_complete: "¡Parche completado!",
-            refine_patch_log: "Registro del parche",
-
-            community_options_subtitle: 'Configura Community sin modificar el perfil oficial de Deltamod.',
-            optcat_data: 'Datos',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Elige el idioma de Deltamod Community. Las funciones nuevas pueden mostrarse en inglés hasta que se actualice su traducción.',
-            language_current: 'Idioma actual',
-            language_select_hint: 'Seleccionar idioma',
-            language_restart_note: 'La página actual se actualiza inmediatamente al cambiar de idioma.',
-            theme_count: '{0} de {1} temas',
-            language_switcher_label: 'Cambiar idioma',
-            community_allmods_subtitle: 'Explora y administra los paquetes instalados.',
-            community_installmanager_subtitle: 'Administra perfiles de juego aislados. Community nunca modifica el perfil oficial de Deltamod.',
-            deleteall_description: 'Solo elimina los datos de Deltamod Community. Los datos del Deltamod oficial no se modifican.',
-            locate_desc: 'Para usar Deltamod Community, localiza la instalación de un juego compatible.',
-            main_empty_title: 'La lista de parches está lista',
-            main_empty_desc: 'Importa un paquete compatible o explora el Mod Shop. Los mods instalados aparecerán aquí antes de modificar los archivos del juego.',
-            allmods_empty_title: 'Todavía no hay mods instalados',
-            allmods_empty_desc: 'Los paquetes descargados o importados permanecerán visibles aunque no estén activados en la lista de parches.',
-            browse_mod_shop: 'Explorar Mod Shop',
-            import_mod_package: 'Importar paquete de mod',
-            community_delete_data_title: 'Eliminar todos los datos de Community',
-            community_delete_data_desc: 'Elimina las instalaciones, mods y opciones de Community sin modificar los datos oficiales.',
-            community_hash_title: 'Activar comprobación de hashes',
-            community_hash_desc: 'Comprueba los hashes de los mods. Los análisis pueden tardar más.',
-            community_dynamic_music_title: 'Activar música dinámica',
-            community_dynamic_music_desc: 'Cambia la música de fondo según la página actual.',
-            community_music_volume_title: 'Volumen de la música',
-            community_music_volume_desc: 'Ajusta el volumen de la música de los menús y los temas.',
-            community_alert_alignment: 'Posición de los avisos',
-            community_seasonal_title: 'Detalles estacionales',
-            community_seasonal_desc: 'Añade detalles de píxeles según el calendario sin reemplazar el tema activo. Elige un evento para previsualizarlo.',
-            seasonal_auto: 'Automático',
-            seasonal_off: 'Desactivado',
-            seasonal_womens_health: 'Salud de la mujer',
-            seasonal_mens_health: 'Salud del hombre',
-            seasonal_easter: 'Pascua',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Navidad',
-            seasonal_new_year: 'Año Nuevo',
-            theme_intro: 'Cambia a la vez el fondo, el color de énfasis y la música del menú.',
-            theme_create: 'Crear tema',
-            theme_search: 'Buscar temas',
-            theme_workshop: 'Taller de temas',
-            theme_custom_title: 'Crear un tema personalizado',
-            theme_custom_description: 'Define aquí su identidad y luego elige el fondo y una banda sonora opcional.',
-            theme_creation_steps: 'Pasos de creación',
-            theme_step_identity: 'Identidad',
-            theme_step_background: 'Fondo',
-            theme_step_music: 'Música',
-            theme_name_placeholder: 'Mi tema',
-            theme_description_label: 'Descripción',
-            theme_optional: 'Opcional',
-            theme_description_placeholder: '¿En qué se basa este tema?',
-            theme_main_color: 'Color principal',
-            theme_color_aria: 'Color principal del tema',
-            theme_color_help: 'Se usa en controles, elementos destacados y el engranaje de la barra de tareas.',
-            theme_soundtrack_title: 'Añadir una banda sonora personalizada',
-            theme_soundtrack_help: 'MP3 u OGG. La elegirás después del fondo.',
-            theme_icon_preview: 'Vista previa del icono de la aplicación',
-            theme_taskbar_preview: 'Vista previa en la barra de tareas',
-            theme_soul_color: 'Color del ALMA',
-            theme_cancel: 'Cancelar',
-            theme_continue_background: 'Continuar al fondo',
-            theme_available: 'Temas disponibles',
-            theme_no_matches: 'No hay temas coincidentes',
-            theme_no_matches_hint: 'Prueba con otro nombre, descripción o pista musical.',
-            theme_filter_placeholder: 'Nombre, descripción o música',
-            theme_background_preview: 'Vista previa del fondo de {0}',
-            theme_accent_colors: 'Énfasis de la interfaz: {0}; color del ALMA: {1}',
-            theme_accent_only: 'Énfasis del tema: {0}',
-            theme_built_in: 'Integrado',
-            theme_custom: 'Personalizado',
-            theme_credits: 'Créditos',
-            theme_edit_name: 'Haz clic para editar el nombre del tema',
-            theme_edit_description: 'Haz clic para editar la descripción',
-            theme_in_use: 'En uso',
-            theme_use: 'Usar tema',
-            theme_delete: 'Eliminar',
-            theme_delete_confirm: '¿Eliminar «{0}»? Esta acción no se puede deshacer.',
-            theme_name_required: 'Introduce un nombre para el tema.',
-            theme_choose_background: 'Elige una imagen de fondo.',
-            theme_choose_background_music: 'Elige una imagen de fondo y luego el archivo de música.',
-            theme_import_canceled: 'Importación cancelada. No se copió ningún archivo del tema.',
-            theme_import_failed: 'Error al importar el tema: {0}',
-            theme_unknown_error: 'Error desconocido',
-            allmods_unnamed: 'Mod sin nombre',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'No se especificó ningún ID.',
-            allmods_variants: '{0} variantes',
-            allmods_compatible: 'Compatible con la versión actual',
-            allmods_incompatible: 'Incompatible: {0}',
-            allmods_gamebanana: 'Instalado mediante GameBanana',
-            allmods_cant_like: 'No se puede indicar que te gusta el mod',
-            allmods_already_liked: 'Ya has indicado que te gusta este mod. ¡No puedes volver a hacerlo!',
-            allmods_ok: 'Aceptar',
-            allmods_like_tooltip: 'Indicar que te gusta este mod en GameBanana',
-            allmods_comment_leave: 'Dejar un comentario en GameBanana',
-            allmods_comment_view: 'Ver los comentarios de este mod en GameBanana',
-            allmods_mod_id: "ID del mod: '{0}'",
-            allmods_no_installation_match: 'No hay mods para esta instalación',
-            allmods_choose_installation: 'Elige otra instalación arriba o vuelve a Todas las instalaciones.'
-        },
-        fr: {
-            optcat_mac: "Mac",
-            mac_credits: "Crédits",
-            mac_credit_name: "Prise en charge Mac par {0}",
-            mac_credit_desc: "A rendu possibles le téléchargement et l'application des mods sur macOS.",
-            mac_how_title: "Fonctionnement sur Mac",
-            mac_automatic: "Automatique",
-            mac_downloads: "Téléchargement des mods",
-            mac_downloads_desc: "Les mods GameBanana prévus pour Deltamod ou Deltahub se téléchargent directement. Les paquets Deltahub n'indiquent pas quel chapitre ils modifient : Deltamod en propose un d'après les fichiers du mod et vous demande de confirmer.",
-            mac_copy: "Votre jeu reste intact",
-            mac_copy_value: "Copie séparée",
-            mac_copy_desc: "Quand vous ajoutez DELTARUNE, Deltamod copie DELTARUNE.app dans son propre dossier et ne modifie que cette copie. Le jeu de votre dossier Applications reste exactement tel quel.",
-            mac_reference_value: "Options → Installation",
-            mac_reference_desc: "La plupart des mods sont conçus pour les fichiers Windows du jeu, et les fichiers Mac sont empaquetés différemment : les mods ne peuvent donc pas y être appliqués directement. Deltamod applique chaque mod à votre fichier data.win Windows non modifié et installe le résultat dans la copie sous le nom game.ios. Les mods qui remplacent seulement des fichiers, comme la musique, n'en ont pas besoin.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod installe vos mods activés dans la copie, la signe à nouveau pour que macOS accepte les fichiers modifiés, puis la lance. À la fermeture du jeu, les fichiers d'origine sont rétablis.",
-            mac_saves: "Sauvegardes",
-            mac_saves_value: "Partagées",
-            mac_saves_desc: "La copie et votre jeu d'origine utilisent les mêmes sauvegardes dans ~/Library/Application Support/com.tobyfox.deltarune. Sauvegardez-les avant d'essayer de nouveaux mods.",
-            mac_unsupported: "Pas encore pris en charge",
-            mac_unsupported_value: "Scripts .csx",
-            mac_unsupported_desc: "Les mods de script nécessitent UndertaleModTool, qui n'a pas encore de version Apple Silicon.",
-            reference_files: "Fichiers de référence Windows",
-            reference_stored: "Fichiers enregistrés",
-            reference_none: "Aucun",
-            reference_all: "Tous les chapitres",
-            reference_chapter_select: "Sélection des chapitres",
-            reference_chapter: "Chapitre {0}",
-            reference_chapters: "Chapitres {0}",
-            reference_short: "Ch. {0}",
-            reference_stored_list: "Enregistrés : {0}.",
-            reference_desc: "La plupart des mods sont conçus pour la version Windows du jeu. Sur cet ordinateur, Deltamod les applique à vos fichiers Windows non modifiés et installe le résultat dans sa propre copie du jeu.",
-            reference_add: "Ajouter les fichiers de référence Windows",
-            reference_replace: "Remplacer les fichiers de référence Windows",
-            reference_choose_desc: "Choisissez le dossier du jeu Windows contenant DELTARUNE.exe et les dossiers chapter1_windows, chapter2_windows, … Seuls les fichiers data.win sont copiés. Utilisez la même version du jeu que celle visée par vos mods.",
-            reference_choose: "Choisir un dossier",
-            reference_not_found: "Aucun fichier du jeu Windows trouvé",
-            refine_load_failed: "Impossible de charger la liste des mods.",
-            refine_retry: "Réessayer",
-            shop_next_page_failed: "La page suivante n’a pas pu être chargée. Les résultats actuels sont toujours là.",
-            refine_search_mods: "Rechercher des mods",
-            refine_search_hint: "Nom, auteur, version ou ID du paquet",
-            refine_clear: "Effacer",
-            refine_mod_count: "{0} sur {1} mods",
-            refine_no_matches: "Aucun mod correspondant. Effacez la recherche ou changez le filtre.",
-            refine_saving: "Enregistrement…",
-            refine_saved: "Enregistré",
-            refine_save_failed: "Non enregistré. Réessayez.",
-            refine_progress: "Progression",
-            refine_patch_complete: "Application terminée !",
-            refine_patch_log: "Journal des modifications",
-
-            community_options_subtitle: 'Configurez Community sans modifier le profil officiel de Deltamod.',
-            optcat_data: 'Données',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Choisissez la langue de Deltamod Community. Les nouvelles fonctions peuvent rester en anglais jusqu’à leur traduction.',
-            language_current: 'Langue actuelle',
-            language_select_hint: 'Choisir la langue',
-            language_restart_note: 'La page actuelle s’actualise immédiatement après le changement de langue.',
-            theme_count: '{0} sur {1} thèmes',
-            language_switcher_label: 'Changer de langue',
-            community_allmods_subtitle: 'Parcourez et gérez les paquets installés.',
-            community_installmanager_subtitle: 'Gérez des profils de jeu isolés. Community ne modifie jamais le profil officiel de Deltamod.',
-            deleteall_description: 'Supprime uniquement les données de Deltamod Community. Les données officielles restent intactes.',
-            locate_desc: 'Pour utiliser Deltamod Community, localisez l’installation d’un jeu pris en charge.',
-            main_empty_title: 'Votre liste de patchs est prête',
-            main_empty_desc: 'Importez un paquet compatible ou parcourez le Mod Shop. Les mods installés apparaîtront ici avant toute modification des fichiers du jeu.',
-            allmods_empty_title: 'Aucun mod installé',
-            allmods_empty_desc: 'Les paquets téléchargés ou importés resteront visibles même s’ils ne sont pas activés dans la liste de patchs.',
-            browse_mod_shop: 'Parcourir le Mod Shop',
-            import_mod_package: 'Importer un paquet de mod',
-            community_delete_data_title: 'Supprimer toutes les données Community',
-            community_delete_data_desc: 'Supprime les installations, mods et options de Community sans modifier les données officielles.',
-            community_hash_title: 'Activer la vérification des empreintes',
-            community_hash_desc: 'Vérifie les empreintes des mods. Les analyses peuvent être plus lentes.',
-            community_dynamic_music_title: 'Activer la musique dynamique',
-            community_dynamic_music_desc: 'Adapte la musique de fond à la page actuelle.',
-            community_music_volume_title: 'Volume de la musique',
-            community_music_volume_desc: 'Règle le volume de la musique des menus et des thèmes.',
-            community_alert_alignment: 'Position des alertes',
-            community_seasonal_title: 'Détails saisonniers',
-            community_seasonal_desc: 'Ajoute des détails en pixel art selon le calendrier sans remplacer le thème actif. Choisissez un événement pour l’aperçu.',
-            seasonal_auto: 'Automatique',
-            seasonal_off: 'Désactivé',
-            seasonal_womens_health: 'Santé des femmes',
-            seasonal_mens_health: 'Santé des hommes',
-            seasonal_easter: 'Pâques',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Noël',
-            seasonal_new_year: 'Nouvel An',
-            theme_intro: 'Changez simultanément l’arrière-plan, la couleur d’accentuation et la musique du menu.',
-            theme_create: 'Créer un thème',
-            theme_search: 'Rechercher des thèmes',
-            theme_workshop: 'Atelier de thèmes',
-            theme_custom_title: 'Créer un thème personnalisé',
-            theme_custom_description: 'Définissez ici son identité, puis choisissez l’arrière-plan et une bande-son facultative.',
-            theme_creation_steps: 'Étapes de création',
-            theme_step_identity: 'Identité',
-            theme_step_background: 'Arrière-plan',
-            theme_step_music: 'Musique',
-            theme_name_placeholder: 'Mon thème',
-            theme_description_label: 'Description',
-            theme_optional: 'Facultatif',
-            theme_description_placeholder: 'De quoi ce thème s’inspire-t-il ?',
-            theme_main_color: 'Couleur principale',
-            theme_color_aria: 'Couleur principale du thème',
-            theme_color_help: 'Utilisée pour les commandes, les accents et l’engrenage de la barre des tâches.',
-            theme_soundtrack_title: 'Ajouter une bande-son personnalisée',
-            theme_soundtrack_help: 'MP3 ou OGG. Vous la choisirez après l’arrière-plan.',
-            theme_icon_preview: 'Aperçu de l’icône de l’application',
-            theme_taskbar_preview: 'Aperçu dans la barre des tâches',
-            theme_soul_color: 'Couleur de l’ÂME',
-            theme_cancel: 'Annuler',
-            theme_continue_background: 'Continuer vers l’arrière-plan',
-            theme_available: 'Thèmes disponibles',
-            theme_no_matches: 'Aucun thème correspondant',
-            theme_no_matches_hint: 'Essayez un autre nom, une autre description ou une autre piste musicale.',
-            theme_filter_placeholder: 'Nom, description ou musique',
-            theme_background_preview: 'Aperçu de l’arrière-plan de {0}',
-            theme_accent_colors: 'Accent de l’interface : {0} ; couleur de l’ÂME : {1}',
-            theme_accent_only: 'Accent du thème : {0}',
-            theme_built_in: 'Intégré',
-            theme_custom: 'Personnalisé',
-            theme_credits: 'Crédits',
-            theme_edit_name: 'Cliquez pour modifier le nom du thème',
-            theme_edit_description: 'Cliquez pour modifier la description',
-            theme_in_use: 'Utilisé',
-            theme_use: 'Utiliser ce thème',
-            theme_delete: 'Supprimer',
-            theme_delete_confirm: 'Supprimer « {0} » ? Cette action est irréversible.',
-            theme_name_required: 'Saisissez un nom pour le thème.',
-            theme_choose_background: 'Choisissez une image d’arrière-plan.',
-            theme_choose_background_music: 'Choisissez une image d’arrière-plan, puis le fichier musical.',
-            theme_import_canceled: 'Importation annulée. Aucun fichier du thème n’a été copié.',
-            theme_import_failed: 'Échec de l’importation du thème : {0}',
-            theme_unknown_error: 'Erreur inconnue',
-            allmods_unnamed: 'Mod sans nom',
-            allmods_size: '{0} Mo',
-            allmods_no_id: 'Aucun identifiant n’a été indiqué.',
-            allmods_variants: '{0} variantes',
-            allmods_compatible: 'Compatible avec la version actuelle',
-            allmods_incompatible: 'Incompatible : {0}',
-            allmods_gamebanana: 'Installé via GameBanana',
-            allmods_cant_like: 'Impossible d’aimer ce mod',
-            allmods_already_liked: 'Vous aimez déjà ce mod. Impossible de l’aimer une seconde fois !',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Aimer ce mod sur GameBanana',
-            allmods_comment_leave: 'Laisser un commentaire sur GameBanana',
-            allmods_comment_view: 'Voir les commentaires de ce mod sur GameBanana',
-            allmods_mod_id: "Identifiant du mod : '{0}'",
-            allmods_no_installation_match: 'Aucun mod pour cette installation',
-            allmods_choose_installation: 'Choisissez une autre installation ci-dessus ou revenez à Toutes les installations.'
-        },
-        de: {
-            optcat_mac: "Mac",
-            mac_credits: "Mitwirkende",
-            mac_credit_name: "Mac-Unterstützung von {0}",
-            mac_credit_desc: "Hat das Herunterladen und Patchen von Mods unter macOS möglich gemacht.",
-            mac_how_title: "So funktioniert die Mac-Unterstützung",
-            mac_automatic: "Automatisch",
-            mac_downloads: "Mods herunterladen",
-            mac_downloads_desc: "GameBanana-Mods, die für Deltamod oder Deltahub verpackt sind, werden direkt heruntergeladen. Deltahub-Pakete geben nicht an, welches Kapitel sie ändern, daher schlägt Deltamod anhand der Mod-Dateien eines vor und bittet dich um Bestätigung.",
-            mac_copy: "Dein Spiel bleibt unverändert",
-            mac_copy_value: "Separate Kopie",
-            mac_copy_desc: "Wenn du DELTARUNE hinzufügst, kopiert Deltamod DELTARUNE.app in einen eigenen Ordner und ändert nur diese Kopie. Das Spiel in deinem Programme-Ordner bleibt genau so, wie es war.",
-            mac_reference_value: "Optionen → Installation",
-            mac_reference_desc: "Die meisten Mods sind für die Windows-Spieldateien gemacht, und die Mac-Dateien sind anders gepackt, daher lassen sich Mods nicht direkt darauf anwenden. Deltamod wendet jede Mod auf deine unveränderte Windows-Datei data.win an und installiert das Ergebnis als game.ios in der Kopie. Mods, die nur Dateien ersetzen, etwa Musik, brauchen sie nicht.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod installiert deine aktivierten Mods in der Kopie, signiert sie neu, damit macOS die geänderten Dateien akzeptiert, und startet sie. Wenn das Spiel beendet wird, werden die Originaldateien wiederhergestellt.",
-            mac_saves: "Spielstände",
-            mac_saves_value: "Gemeinsam",
-            mac_saves_desc: "Die Kopie und dein Originalspiel nutzen dieselben Spielstände in ~/Library/Application Support/com.tobyfox.deltarune. Sichere sie, bevor du neue Mods ausprobierst.",
-            mac_unsupported: "Noch nicht unterstützt",
-            mac_unsupported_value: ".csx-Skripte",
-            mac_unsupported_desc: "Skript-Mods benötigen UndertaleModTool, das es noch nicht für Apple Silicon gibt.",
-            reference_files: "Windows-Referenzdateien",
-            reference_stored: "Gespeicherte Dateien",
-            reference_none: "Noch keine",
-            reference_all: "Alle Kapitel",
-            reference_chapter_select: "Kapitelauswahl",
-            reference_chapter: "Kapitel {0}",
-            reference_chapters: "Kapitel {0}",
-            reference_short: "Kap. {0}",
-            reference_stored_list: "Gespeichert: {0}.",
-            reference_desc: "Die meisten Mods sind für die Windows-Version des Spiels gemacht. Auf diesem Computer wendet Deltamod sie auf deine unveränderten Windows-Spieldateien an und installiert das Ergebnis in seiner eigenen Kopie des Spiels.",
-            reference_add: "Windows-Referenzdateien hinzufügen",
-            reference_replace: "Windows-Referenzdateien ersetzen",
-            reference_choose_desc: "Wähle den Windows-Spielordner mit DELTARUNE.exe und den Ordnern chapter1_windows, chapter2_windows, … Es werden nur die data.win-Dateien kopiert. Verwende dieselbe Spielversion, für die deine Mods gedacht sind.",
-            reference_choose: "Ordner wählen",
-            reference_not_found: "Keine Windows-Spieldateien gefunden",
-            refine_load_failed: "Die Mod-Liste konnte nicht geladen werden.",
-            refine_retry: "Erneut versuchen",
-            shop_next_page_failed: "Die nächste Seite konnte nicht geladen werden. Die bisherigen Ergebnisse bleiben sichtbar.",
-            refine_search_mods: "Mods suchen",
-            refine_search_hint: "Name, Autor, Version oder Paket-ID",
-            refine_clear: "Leeren",
-            refine_mod_count: "{0} von {1} Mods",
-            refine_no_matches: "Keine passenden Mods. Suche leeren oder Filter ändern.",
-            refine_saving: "Speichern…",
-            refine_saved: "Gespeichert",
-            refine_save_failed: "Nicht gespeichert. Erneut versuchen.",
-            refine_progress: "Fortschritt",
-            refine_patch_complete: "Patchen abgeschlossen!",
-            refine_patch_log: "Patch-Protokoll",
-
-            community_options_subtitle: 'Community konfigurieren, ohne das offizielle Deltamod-Profil zu verändern.',
-            optcat_data: 'Daten',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Wähle die Sprache von Deltamod Community. Neue Funktionen können bis zur Übersetzung auf Englisch angezeigt werden.',
-            language_current: 'Aktuelle Sprache',
-            language_select_hint: 'Sprache auswählen',
-            language_restart_note: 'Die aktuelle Seite wird nach dem Sprachwechsel sofort neu geladen.',
-            theme_count: '{0} von {1} Themes',
-            language_switcher_label: 'Sprache ändern',
-            community_allmods_subtitle: 'Installierte Pakete durchsuchen und verwalten.',
-            community_installmanager_subtitle: 'Getrennte Spielprofile verwalten. Community verändert niemals das offizielle Deltamod-Profil.',
-            deleteall_description: 'Löscht nur Daten von Deltamod Community. Die offiziellen Deltamod-Daten bleiben unverändert.',
-            locate_desc: 'Wähle eine unterstützte Spielinstallation aus, um Deltamod Community zu verwenden.',
-            main_empty_title: 'Deine Patch-Liste ist bereit',
-            main_empty_desc: 'Importiere ein kompatibles Mod-Paket oder öffne den Mod Shop. Installierte Mods erscheinen hier, bevor Spieldateien verändert werden.',
-            allmods_empty_title: 'Noch keine Mods installiert',
-            allmods_empty_desc: 'Heruntergeladene oder importierte Pakete bleiben sichtbar, auch wenn sie nicht in der Patch-Liste aktiviert sind.',
-            browse_mod_shop: 'Mod Shop öffnen',
-            import_mod_package: 'Mod-Paket importieren',
-            community_delete_data_title: 'Alle Community-Daten löschen',
-            community_delete_data_desc: 'Löscht Community-Installationen, Mods und Optionen, ohne offizielle Daten zu verändern.',
-            community_hash_title: 'Hash-Prüfungen aktivieren',
-            community_hash_desc: 'Prüft Mod-Hashes auf Kompatibilität. Scans können dadurch länger dauern.',
-            community_dynamic_music_title: 'Dynamische Musik aktivieren',
-            community_dynamic_music_desc: 'Passt die Hintergrundmusik an die aktuelle Seite an.',
-            community_music_volume_title: 'Musiklautstärke',
-            community_music_volume_desc: 'Regelt die Lautstärke der Menü- und Theme-Musik.',
-            community_alert_alignment: 'Position der Hinweise',
-            community_seasonal_title: 'Saisonale Details',
-            community_seasonal_desc: 'Ergänzt kalenderabhängige Pixel-Details, ohne das aktive Theme zu ersetzen. Wähle ein Ereignis für die Vorschau.',
-            seasonal_auto: 'Automatisch',
-            seasonal_off: 'Aus',
-            seasonal_womens_health: 'Frauengesundheit',
-            seasonal_mens_health: 'Männergesundheit',
-            seasonal_easter: 'Ostern',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Weihnachten',
-            seasonal_new_year: 'Neujahr',
-            theme_intro: 'Ändere Hintergrund, Akzentfarbe und Menümusik gemeinsam.',
-            theme_create: 'Theme erstellen',
-            theme_search: 'Themes suchen',
-            theme_workshop: 'Theme-Werkstatt',
-            theme_custom_title: 'Eigenes Theme erstellen',
-            theme_custom_description: 'Lege hier seine Identität fest und wähle danach den Hintergrund und optional einen Soundtrack aus.',
-            theme_creation_steps: 'Erstellungsschritte',
-            theme_step_identity: 'Identität',
-            theme_step_background: 'Hintergrund',
-            theme_step_music: 'Musik',
-            theme_name_placeholder: 'Mein Theme',
-            theme_description_label: 'Beschreibung',
-            theme_optional: 'Optional',
-            theme_description_placeholder: 'Worauf basiert dieses Theme?',
-            theme_main_color: 'Hauptfarbe',
-            theme_color_aria: 'Hauptfarbe des Themes',
-            theme_color_help: 'Wird für Steuerelemente, Akzente und das Zahnrad in der Taskleiste verwendet.',
-            theme_soundtrack_title: 'Eigenen Soundtrack hinzufügen',
-            theme_soundtrack_help: 'MP3 oder OGG. Du wählst ihn nach dem Hintergrund aus.',
-            theme_icon_preview: 'Vorschau des Anwendungssymbols',
-            theme_taskbar_preview: 'Taskleistenvorschau',
-            theme_soul_color: 'SEELEN-Farbe',
-            theme_cancel: 'Abbrechen',
-            theme_continue_background: 'Weiter zum Hintergrund',
-            theme_available: 'Verfügbare Themes',
-            theme_no_matches: 'Keine passenden Themes',
-            theme_no_matches_hint: 'Versuche es mit einem anderen Namen, einer anderen Beschreibung oder einem anderen Musiktitel.',
-            theme_filter_placeholder: 'Name, Beschreibung oder Musik',
-            theme_background_preview: 'Hintergrundvorschau für {0}',
-            theme_accent_colors: 'Oberflächenakzent: {0}; SEELEN-Farbe: {1}',
-            theme_accent_only: 'Theme-Akzent: {0}',
-            theme_built_in: 'Integriert',
-            theme_custom: 'Benutzerdefiniert',
-            theme_credits: 'Mitwirkende',
-            theme_edit_name: 'Klicken, um den Namen des Themes zu bearbeiten',
-            theme_edit_description: 'Klicken, um die Beschreibung zu bearbeiten',
-            theme_in_use: 'In Verwendung',
-            theme_use: 'Theme verwenden',
-            theme_delete: 'Löschen',
-            theme_delete_confirm: '„{0}“ löschen? Dies kann nicht rückgängig gemacht werden.',
-            theme_name_required: 'Gib einen Namen für das Theme ein.',
-            theme_choose_background: 'Wähle ein Hintergrundbild aus.',
-            theme_choose_background_music: 'Wähle ein Hintergrundbild und danach die Musikdatei aus.',
-            theme_import_canceled: 'Import abgebrochen. Es wurden keine Theme-Dateien kopiert.',
-            theme_import_failed: 'Theme-Import fehlgeschlagen: {0}',
-            theme_unknown_error: 'Unbekannter Fehler',
-            allmods_unnamed: 'Unbenannter Mod',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'Es wurde keine ID angegeben.',
-            allmods_variants: '{0} Varianten',
-            allmods_compatible: 'Mit der aktuellen Version kompatibel',
-            allmods_incompatible: 'Nicht kompatibel: {0}',
-            allmods_gamebanana: 'Über GameBanana installiert',
-            allmods_cant_like: 'Mod kann nicht gelikt werden',
-            allmods_already_liked: 'Du hast diesen Mod bereits gelikt. Mehr als einmal geht nicht!',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Diesen Mod auf GameBanana liken',
-            allmods_comment_leave: 'Kommentar auf GameBanana hinterlassen',
-            allmods_comment_view: 'GameBanana-Kommentare zu diesem Mod anzeigen',
-            allmods_mod_id: "Mod-ID '{0}'",
-            allmods_no_installation_match: 'Keine Mods für diese Installation',
-            allmods_choose_installation: 'Wähle oben eine andere Installation aus oder kehre zu Alle Installationen zurück.'
-        },
-        'pt-br': {
-            optcat_mac: "Mac",
-            mac_credits: "Créditos",
-            mac_credit_name: "Suporte para Mac por {0}",
-            mac_credit_desc: "Fez o download e a aplicação de mods funcionarem no macOS.",
-            mac_how_title: "Como funciona o suporte para Mac",
-            mac_automatic: "Automático",
-            mac_downloads: "Download de mods",
-            mac_downloads_desc: "Mods do GameBanana empacotados para Deltamod ou Deltahub são baixados diretamente. Pacotes do Deltahub não informam qual capítulo alteram, então o Deltamod sugere um com base nos arquivos do mod e pede sua confirmação.",
-            mac_copy: "Seu jogo não é alterado",
-            mac_copy_value: "Cópia separada",
-            mac_copy_desc: "Ao adicionar o DELTARUNE, o Deltamod copia o DELTARUNE.app para uma pasta própria e altera apenas essa cópia. O jogo na sua pasta Aplicativos continua exatamente como estava.",
-            mac_reference_value: "Opções → Instalação",
-            mac_reference_desc: "A maioria dos mods é feita para os arquivos de Windows do jogo, e os arquivos de Mac são empacotados de outro jeito, então os mods não podem ser aplicados diretamente. O Deltamod aplica cada mod ao seu arquivo data.win de Windows sem modificações e instala o resultado na cópia como game.ios. Mods que só substituem arquivos, como músicas, não precisam deles.",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "O Deltamod instala seus mods ativos na cópia, assina-a novamente para que o macOS aceite os arquivos alterados e a inicia. Quando o jogo fecha, os arquivos originais são restaurados.",
-            mac_saves: "Saves",
-            mac_saves_value: "Compartilhados",
-            mac_saves_desc: "A cópia e o jogo original usam os mesmos saves em ~/Library/Application Support/com.tobyfox.deltarune. Faça um backup antes de testar mods novos.",
-            mac_unsupported: "Ainda não suportado",
-            mac_unsupported_value: "Scripts .csx",
-            mac_unsupported_desc: "Mods de script precisam do UndertaleModTool, que ainda não tem versão para Apple Silicon.",
-            reference_files: "Arquivos de referência do Windows",
-            reference_stored: "Arquivos salvos",
-            reference_none: "Nenhum ainda",
-            reference_all: "Todos os capítulos",
-            reference_chapter_select: "Seleção de capítulos",
-            reference_chapter: "Capítulo {0}",
-            reference_chapters: "Capítulos {0}",
-            reference_short: "Cap. {0}",
-            reference_stored_list: "Salvos: {0}.",
-            reference_desc: "A maioria dos mods é feita para a versão de Windows do jogo. Neste computador, o Deltamod os aplica aos seus arquivos de Windows sem modificações e instala o resultado na própria cópia do jogo.",
-            reference_add: "Adicionar arquivos de referência do Windows",
-            reference_replace: "Substituir arquivos de referência do Windows",
-            reference_choose_desc: "Escolha a pasta do jogo de Windows que contém DELTARUNE.exe e as pastas chapter1_windows, chapter2_windows, … Apenas os arquivos data.win são copiados. Use a mesma versão do jogo para a qual seus mods foram feitos.",
-            reference_choose: "Escolher pasta",
-            reference_not_found: "Nenhum arquivo do jogo de Windows encontrado",
-            refine_load_failed: "Não foi possível carregar a lista de mods.",
-            refine_retry: "Tentar novamente",
-            shop_next_page_failed: "Não foi possível carregar a próxima página. Os resultados atuais continuam aqui.",
-            refine_search_mods: "Buscar mods",
-            refine_search_hint: "Nome, autor, versão ou ID do pacote",
-            refine_clear: "Limpar",
-            refine_mod_count: "{0} de {1} mods",
-            refine_no_matches: "Nenhum mod encontrado. Limpe a busca ou altere o filtro.",
-            refine_saving: "Salvando…",
-            refine_saved: "Salvo",
-            refine_save_failed: "Não foi salvo. Tente novamente.",
-            refine_progress: "Progresso",
-            refine_patch_complete: "Aplicação concluída!",
-            refine_patch_log: "Registro de aplicação",
-
-            community_options_subtitle: 'Configure o Community sem alterar o perfil oficial do Deltamod.',
-            optcat_data: 'Dados',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Escolha o idioma do Deltamod Community. Recursos novos podem permanecer em inglês até que a tradução seja atualizada.',
-            language_current: 'Idioma atual',
-            language_select_hint: 'Selecionar idioma',
-            language_restart_note: 'A página atual é atualizada imediatamente após a troca de idioma.',
-            theme_count: '{0} de {1} temas',
-            language_switcher_label: 'Alterar idioma',
-            community_allmods_subtitle: 'Navegue e gerencie os pacotes instalados.',
-            community_installmanager_subtitle: 'Gerencie perfis de jogo isolados. O Community nunca altera o perfil oficial do Deltamod.',
-            deleteall_description: 'Exclui apenas os dados do Deltamod Community. Os dados oficiais permanecem intactos.',
-            locate_desc: 'Para usar o Deltamod Community, localize a instalação de um jogo compatível.',
-            main_empty_title: 'Sua lista de patches está pronta',
-            main_empty_desc: 'Importe um pacote compatível ou navegue pelo Mod Shop. Os mods instalados aparecerão aqui antes de qualquer arquivo do jogo ser alterado.',
-            allmods_empty_title: 'Nenhum mod instalado',
-            allmods_empty_desc: 'Pacotes baixados ou importados continuarão visíveis mesmo quando não estiverem ativados na lista de patches.',
-            browse_mod_shop: 'Abrir Mod Shop',
-            import_mod_package: 'Importar pacote de mod',
-            community_delete_data_title: 'Excluir todos os dados do Community',
-            community_delete_data_desc: 'Exclui instalações, mods e opções do Community sem alterar os dados oficiais.',
-            community_hash_title: 'Ativar verificação de hashes',
-            community_hash_desc: 'Verifica os hashes dos mods. As análises podem demorar mais.',
-            community_dynamic_music_title: 'Ativar música dinâmica',
-            community_dynamic_music_desc: 'Altera a música de fundo conforme a página atual.',
-            community_music_volume_title: 'Volume da música',
-            community_music_volume_desc: 'Ajusta o volume da música dos menus e temas.',
-            community_alert_alignment: 'Posição dos alertas',
-            community_seasonal_title: 'Detalhes sazonais',
-            community_seasonal_desc: 'Adiciona detalhes em pixel art conforme o calendário sem substituir o tema ativo. Escolha um evento para visualizar.',
-            seasonal_auto: 'Automático',
-            seasonal_off: 'Desativado',
-            seasonal_womens_health: 'Saúde da mulher',
-            seasonal_mens_health: 'Saúde do homem',
-            seasonal_easter: 'Páscoa',
-            seasonal_halloween: 'Halloween',
-            seasonal_christmas: 'Natal',
-            seasonal_new_year: 'Ano Novo',
-            theme_intro: 'Altere o plano de fundo, a cor de destaque e a música do menu em conjunto.',
-            theme_create: 'Criar tema',
-            theme_search: 'Pesquisar temas',
-            theme_workshop: 'Oficina de temas',
-            theme_custom_title: 'Criar um tema personalizado',
-            theme_custom_description: 'Defina a identidade aqui e depois escolha o plano de fundo e uma trilha sonora opcional.',
-            theme_creation_steps: 'Etapas de criação',
-            theme_step_identity: 'Identidade',
-            theme_step_background: 'Plano de fundo',
-            theme_step_music: 'Música',
-            theme_name_placeholder: 'Meu tema',
-            theme_description_label: 'Descrição',
-            theme_optional: 'Opcional',
-            theme_description_placeholder: 'Em que este tema se baseia?',
-            theme_main_color: 'Cor principal',
-            theme_color_aria: 'Cor principal do tema',
-            theme_color_help: 'Usada nos controles, destaques e engrenagem da barra de tarefas.',
-            theme_soundtrack_title: 'Adicionar uma trilha sonora personalizada',
-            theme_soundtrack_help: 'MP3 ou OGG. Você poderá escolhê-la depois do plano de fundo.',
-            theme_icon_preview: 'Prévia do ícone do aplicativo',
-            theme_taskbar_preview: 'Prévia na barra de tarefas',
-            theme_soul_color: 'Cor da ALMA',
-            theme_cancel: 'Cancelar',
-            theme_continue_background: 'Continuar para o plano de fundo',
-            theme_available: 'Temas disponíveis',
-            theme_no_matches: 'Nenhum tema correspondente',
-            theme_no_matches_hint: 'Tente outro nome, descrição ou faixa de música.',
-            theme_filter_placeholder: 'Nome, descrição ou música',
-            theme_background_preview: 'Prévia do plano de fundo de {0}',
-            theme_accent_colors: 'Destaque da interface: {0}; cor da ALMA: {1}',
-            theme_accent_only: 'Destaque do tema: {0}',
-            theme_built_in: 'Integrado',
-            theme_custom: 'Personalizado',
-            theme_credits: 'Créditos',
-            theme_edit_name: 'Clique para editar o nome do tema',
-            theme_edit_description: 'Clique para editar a descrição',
-            theme_in_use: 'Em uso',
-            theme_use: 'Usar tema',
-            theme_delete: 'Excluir',
-            theme_delete_confirm: 'Excluir “{0}”? Esta ação não pode ser desfeita.',
-            theme_name_required: 'Digite um nome para o tema.',
-            theme_choose_background: 'Escolha uma imagem de plano de fundo.',
-            theme_choose_background_music: 'Escolha uma imagem de plano de fundo e depois o arquivo de música.',
-            theme_import_canceled: 'Importação cancelada. Nenhum arquivo do tema foi copiado.',
-            theme_import_failed: 'Falha ao importar o tema: {0}',
-            theme_unknown_error: 'Erro desconhecido',
-            allmods_unnamed: 'Mod sem nome',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'Nenhum ID foi especificado.',
-            allmods_variants: '{0} variantes',
-            allmods_compatible: 'Compatível com a versão atual',
-            allmods_incompatible: 'Incompatível: {0}',
-            allmods_gamebanana: 'Instalado pelo GameBanana',
-            allmods_cant_like: 'Não foi possível curtir o mod',
-            allmods_already_liked: 'Você já curtiu este mod. Não é possível curtir novamente!',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'Curtir este mod no GameBanana',
-            allmods_comment_leave: 'Deixar um comentário no GameBanana',
-            allmods_comment_view: 'Ver os comentários deste mod no GameBanana',
-            allmods_mod_id: "ID do mod: '{0}'",
-            allmods_no_installation_match: 'Nenhum mod para esta instalação',
-            allmods_choose_installation: 'Escolha outra instalação acima ou volte para Todas as instalações.'
-        },
-        ja: {
-            optcat_mac: "Mac",
-            mac_credits: "クレジット",
-            mac_credit_name: "Mac対応: {0}",
-            mac_credit_desc: "macOSでModのダウンロードとパッチ適用ができるようにしました。",
-            mac_how_title: "Mac対応のしくみ",
-            mac_automatic: "自動",
-            mac_downloads: "Modのダウンロード",
-            mac_downloads_desc: "Deltamod または Deltahub 向けに配布されている GameBanana の Mod は直接ダウンロードできます。Deltahub のパッケージはどのチャプター用かを示していないため、Deltamod が Mod のファイルから候補を提案し、確認を求めます。",
-            mac_copy: "元のゲームは変更されません",
-            mac_copy_value: "別のコピー",
-            mac_copy_desc: "DELTARUNE を追加すると、Deltamod は DELTARUNE.app を専用フォルダーにコピーし、そのコピーだけを変更します。「アプリケーション」フォルダーのゲームはそのまま残ります。",
-            mac_reference_value: "オプション → インストール",
-            mac_reference_desc: "ほとんどの Mod は Windows 版のゲームファイル向けに作られており、Mac 版のファイルは構成が異なるため直接適用できません。Deltamod は各 Mod を未改変の Windows 版 data.win に適用し、その結果を game.ios としてコピーにインストールします。音楽などファイルを置き換えるだけの Mod には不要です。",
-            mac_patch: "Patch & Play",
-            mac_patch_desc: "Deltamod は有効な Mod をコピーにインストールし、変更したファイルを macOS が受け入れるよう再署名してから起動します。ゲームを終了すると元のファイルに戻します。",
-            mac_saves: "セーブデータ",
-            mac_saves_value: "共有",
-            mac_saves_desc: "コピーと元のゲームは ~/Library/Application Support/com.tobyfox.deltarune にある同じセーブデータを使います。新しい Mod を試す前にバックアップしてください。",
-            mac_unsupported: "未対応",
-            mac_unsupported_value: ".csx スクリプト",
-            mac_unsupported_desc: "スクリプト Mod には UndertaleModTool が必要ですが、Apple Silicon 版はまだありません。",
-            reference_files: "Windows 参照ファイル",
-            reference_stored: "保存済みファイル",
-            reference_none: "なし",
-            reference_all: "全チャプター",
-            reference_chapter_select: "チャプター選択",
-            reference_chapter: "チャプター {0}",
-            reference_chapters: "チャプター {0}",
-            reference_short: "Ch. {0}",
-            reference_stored_list: "保存済み: {0}。",
-            reference_desc: "ほとんどの Mod は Windows 版のゲーム向けに作られています。このコンピューターでは、Deltamod が未改変の Windows 版ゲームファイルに適用し、その結果を専用のゲームコピーにインストールします。",
-            reference_add: "Windows 参照ファイルを追加",
-            reference_replace: "Windows 参照ファイルを置き換え",
-            reference_choose_desc: "DELTARUNE.exe と chapter1_windows、chapter2_windows などのフォルダーを含む Windows 版ゲームフォルダーを選んでください。コピーされるのは data.win ファイルだけです。Mod が対象とするのと同じバージョンのゲームを使ってください。",
-            reference_choose: "フォルダーを選択",
-            reference_not_found: "Windows 版のゲームファイルが見つかりません",
-            refine_load_failed: "MODリストを読み込めませんでした。",
-            refine_retry: "再試行",
-            shop_next_page_failed: "次のページを読み込めませんでした。現在の結果はそのまま表示されています。",
-            refine_search_mods: "MODを検索",
-            refine_search_hint: "名前、作者、バージョン、パッケージID",
-            refine_clear: "クリア",
-            refine_mod_count: "{1}件中{0}件のMOD",
-            refine_no_matches: "一致するMODがありません。検索をクリアするか、フィルターを変更してください。",
-            refine_saving: "保存中…",
-            refine_saved: "保存しました",
-            refine_save_failed: "保存できませんでした。もう一度お試しください。",
-            refine_progress: "進行状況",
-            refine_patch_complete: "パッチ完了！",
-            refine_patch_log: "パッチログ",
-
-            community_options_subtitle: '公式Deltamodのプロフィールを変更せずにCommunityを設定します。',
-            optcat_data: 'データ',
-            optcat_nexus: 'Nexus Mods',
-            language_help: 'Deltamod Communityで使用する言語を選択します。新機能は翻訳されるまで英語で表示される場合があります。',
-            language_current: '現在の言語',
-            language_select_hint: '言語を選択',
-            language_restart_note: '言語を変更すると、現在のページがすぐに更新されます。',
-            theme_count: '{1}件中{0}件のテーマ',
-            language_switcher_label: '言語を変更',
-            community_allmods_subtitle: 'インストール済みパッケージを確認・管理します。',
-            community_installmanager_subtitle: '個別のゲームプロフィールを管理します。Communityは公式Deltamodのプロフィールを変更しません。',
-            deleteall_description: 'Deltamod Communityのデータのみを削除します。公式Deltamodのデータは変更されません。',
-            locate_desc: 'Deltamod Communityを使用するには、対応するゲームのインストール先を選択してください。',
-            main_empty_title: 'パッチリストの準備ができました',
-            main_empty_desc: '対応するMODパッケージをインポートするか、Mod Shopを開いてください。ゲームファイルを変更する前に、インストール済みMODがここに表示されます。',
-            allmods_empty_title: 'MODはまだインストールされていません',
-            allmods_empty_desc: 'ダウンロードまたはインポートしたパッケージは、パッチリストで無効にしてもここに表示されます。',
-            browse_mod_shop: 'Mod Shopを開く',
-            import_mod_package: 'MODパッケージをインポート',
-            community_delete_data_title: 'Communityの全データを削除',
-            community_delete_data_desc: '公式データを変更せず、Communityのインストール、MOD、オプションを削除します。',
-            community_hash_title: 'ハッシュチェックを有効にする',
-            community_hash_desc: 'MODのハッシュを確認します。スキャンに時間がかかる場合があります。',
-            community_dynamic_music_title: 'ダイナミック音楽を有効にする',
-            community_dynamic_music_desc: '現在のページに応じてBGMを変更します。',
-            community_music_volume_title: '音楽の音量',
-            community_music_volume_desc: 'メニューとテーマの音楽の音量を調整します。',
-            community_alert_alignment: '通知の位置',
-            community_seasonal_title: '季節の演出',
-            community_seasonal_desc: '選択中のテーマを置き換えず、カレンダーに合わせたピクセル演出を追加します。イベントを選ぶとプレビューできます。',
-            seasonal_auto: '自動',
-            seasonal_off: 'オフ',
-            seasonal_womens_health: '女性の健康',
-            seasonal_mens_health: '男性の健康',
-            seasonal_easter: 'イースター',
-            seasonal_halloween: 'ハロウィン',
-            seasonal_christmas: 'クリスマス',
-            seasonal_new_year: '新年',
-            theme_intro: '背景、アクセントカラー、メニュー音楽をまとめて変更します。',
-            theme_create: 'テーマを作成',
-            theme_search: 'テーマを検索',
-            theme_workshop: 'テーマ作成',
-            theme_custom_title: 'カスタムテーマを作成',
-            theme_custom_description: 'ここでテーマの基本情報を設定し、背景と任意のサウンドトラックを選択します。',
-            theme_creation_steps: '作成手順',
-            theme_step_identity: '基本情報',
-            theme_step_background: '背景',
-            theme_step_music: '音楽',
-            theme_name_placeholder: 'マイテーマ',
-            theme_description_label: '説明',
-            theme_optional: '任意',
-            theme_description_placeholder: 'このテーマは何をモチーフにしていますか？',
-            theme_main_color: 'メインカラー',
-            theme_color_aria: 'テーマのメインカラー',
-            theme_color_help: '操作部、アクセント、タスクバーの歯車に使用されます。',
-            theme_soundtrack_title: 'カスタムサウンドトラックを追加',
-            theme_soundtrack_help: 'MP3またはOGG。背景を選んだ後に選択します。',
-            theme_icon_preview: 'アプリケーションアイコンのプレビュー',
-            theme_taskbar_preview: 'タスクバーのプレビュー',
-            theme_soul_color: 'ソウルカラー',
-            theme_cancel: 'キャンセル',
-            theme_continue_background: '背景の選択へ',
-            theme_available: '利用可能なテーマ',
-            theme_no_matches: '一致するテーマがありません',
-            theme_no_matches_hint: '別の名前、説明、または曲名を試してください。',
-            theme_filter_placeholder: '名前、説明、または音楽',
-            theme_background_preview: '{0}の背景プレビュー',
-            theme_accent_colors: 'UIアクセント：{0}、ソウルカラー：{1}',
-            theme_accent_only: 'テーマアクセント：{0}',
-            theme_built_in: '内蔵',
-            theme_custom: 'カスタム',
-            theme_credits: 'クレジット',
-            theme_edit_name: 'クリックしてテーマ名を編集',
-            theme_edit_description: 'クリックして説明を編集',
-            theme_in_use: '使用中',
-            theme_use: 'テーマを使用',
-            theme_delete: '削除',
-            theme_delete_confirm: '「{0}」を削除しますか？この操作は元に戻せません。',
-            theme_name_required: 'テーマ名を入力してください。',
-            theme_choose_background: '背景画像を選択してください。',
-            theme_choose_background_music: '背景画像を選択してから、音楽ファイルを選択してください。',
-            theme_import_canceled: 'インポートをキャンセルしました。テーマファイルはコピーされていません。',
-            theme_import_failed: 'テーマのインポートに失敗しました：{0}',
-            theme_unknown_error: '不明なエラー',
-            allmods_unnamed: '名前のないMOD',
-            allmods_size: '{0} MB',
-            allmods_no_id: 'IDが指定されていません。',
-            allmods_variants: '{0}個のバリエーション',
-            allmods_compatible: '現在のバージョンに対応',
-            allmods_incompatible: '非対応：{0}',
-            allmods_gamebanana: 'GameBananaからインストール済み',
-            allmods_cant_like: 'MODに「いいね」できません',
-            allmods_already_liked: 'このMODにはすでに「いいね」しています。もう一度「いいね」することはできません！',
-            allmods_ok: 'OK',
-            allmods_like_tooltip: 'GameBananaでこのMODに「いいね」する',
-            allmods_comment_leave: 'GameBananaにコメントを投稿',
-            allmods_comment_view: 'GameBananaでこのMODのコメントを表示',
-            allmods_mod_id: "MOD ID「{0}」",
-            allmods_no_installation_match: 'このインストールに該当するMODはありません',
-            allmods_choose_installation: '上で別のインストールを選ぶか、「すべてのインストール」に戻ってください。'
-        }
-    });
-
-    const communityKeys = Object.keys(communityStrings.en).sort();
-    const placeholders = value => [...String(value).matchAll(/{(\d+)}/g)]
-        .map(match => match[0])
-        .sort();
-    for (const code of SUPPORTED_LANGUAGES) {
-        const catalog = communityStrings[code];
-        if (!catalog || JSON.stringify(Object.keys(catalog).sort()) !== JSON.stringify(communityKeys)) {
-            throw new Error(`Community localization keys do not match English for ${code}`);
-        }
-        for (const key of communityKeys) {
-            if (JSON.stringify(placeholders(catalog[key])) !== JSON.stringify(placeholders(communityStrings.en[key]))) {
-                throw new Error(`Community localization placeholders do not match English for ${code}:${key}`);
-            }
-        }
-    }
-
-    let currentLanguage = normalizeLanguage(
-        localStorage.getItem(STORAGE_KEY) || navigator.language
-    );
-    let reverseDictionary = new Map();
+    const requests = new Map();
+    const formatters = new Map();
     const knownTextNodes = new Map();
     const knownAttributes = new Map();
+    const bindings = new WeakMap();
+    const attributeBindings = new WeakMap();
+    const computedBindings = new Map();
+    const localizedAttributes = ['title', 'aria-label', 'aria-valuetext', 'placeholder', 'alt'];
+    const localeCodes = { 'pt-br': 'pt-BR' };
+    const latinAmerica = new Set(['419', 'AR', 'BO', 'BR', 'BZ', 'CL', 'CO', 'CR', 'CU', 'DO', 'EC', 'GT', 'HN', 'MX', 'NI', 'PA', 'PE', 'PR', 'PY', 'SV', 'US', 'UY', 'VE']);
+    const ignoredContent = 'script,style,textarea,code,pre,bdi,[contenteditable="true"],[data-i18n-skip],[data-user-content],.material-symbols-outlined,brand-icon';
+    let reverseDictionary = new Map();
+    let englishKeys = new Map();
+    let changeGeneration = 0;
 
     function normalizeLanguage(value) {
-        const code = String(value || '').trim().toLowerCase();
-        if (SUPPORTED_LANGUAGES.includes(code)) return code;
-        if (code.startsWith('pt')) return 'pt-br';
-        const base = code.split('-')[0];
-        return SUPPORTED_LANGUAGES.includes(base) ? base : DEFAULT_LANGUAGE;
+        const candidate = String(value || '').trim().replaceAll('_', '-');
+        if (!candidate) return null;
+        let locale;
+        try { locale = new Intl.Locale(candidate); } catch { return null; }
+        const exact = SUPPORTED_LANGUAGES.find(code => code.toLowerCase() === locale.baseName.toLowerCase());
+        if (exact) return exact;
+        if (locale.language === 'zh') {
+            if (locale.script === 'Hant') return 'zh-TW';
+            if (locale.script === 'Hans') return 'zh-CN';
+            return ['TW', 'HK', 'MO'].includes(locale.region) ? 'zh-TW' : 'zh-CN';
+        }
+        if (locale.language === 'es') return latinAmerica.has(locale.region) ? 'es-419' : 'es';
+        if (locale.language === 'pt') return 'pt-br';
+        return SUPPORTED_LANGUAGES.includes(locale.language) ? locale.language : null;
     }
 
-    function stripJsonComments(value) {
-        return value.replace(/\/\*[\s\S]*?\*\//g, '');
+    function detectLanguage(values) {
+        for (const value of values || []) {
+            const code = normalizeLanguage(value);
+            if (code) return code;
+        }
+        return DEFAULT_LANGUAGE;
     }
+
+    function storedLanguage() {
+        try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+    }
+    const browserLanguages = [...(navigator.languages || []), navigator.language].filter(Boolean);
+    let currentLanguage = detectLanguage([storedLanguage(), ...browserLanguages]);
+    function formattingLocale(language, requested) {
+        const candidates = requested && requested !== language ? [requested, ...browserLanguages] : browserLanguages;
+        for (const candidate of candidates) {
+            if (normalizeLanguage(candidate) !== language) continue;
+            try { return new Intl.Locale(candidate.replaceAll('_', '-')).toString(); } catch { /* Try the next preference. */ }
+        }
+        return localeCodes[language] || language;
+    }
+    let currentLocale = formattingLocale(currentLanguage);
+    const getLocale = () => currentLocale;
+    const bidi = value => currentLanguage === 'ar' ? `\u2068${String(value)}\u2069` : String(value);
 
     async function fetchLanguageFile(code, filename) {
-        const response = await fetch(`./langs/${code}/${filename}`);
-        if (!response.ok) {
-            throw new Error(`Unable to load ${code}/${filename}: HTTP ${response.status}`);
-        }
+        // All inputs are fixed catalog names or members of SUPPORTED_LANGUAGES.
+        const response = await fetch(`${CATALOG_BASE}${code}/${filename}`);
+        if (!response.ok) throw new Error(`Unable to load ${code}/${filename}: HTTP ${response.status}`);
         return response.text();
     }
 
     async function loadDictionary(code) {
         if (dictionaries.has(code)) return dictionaries.get(code);
-        const text = await fetchLanguageFile(code, 'language.json');
-        const parsed = JSON.parse(stripJsonComments(text));
-        const merged = Object.freeze({
-            ...parsed,
-            ...(communityStrings[code] || {})
-        });
-        dictionaries.set(code, merged);
-        return merged;
+        if (requests.has(code)) return requests.get(code);
+        const request = (async () => {
+            const source = await fetchLanguageFile(code, 'language.json');
+            const parsed = JSON.parse(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+            const catalog = Object.create(null);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid translation catalog');
+            for (const [key, value] of Object.entries(parsed)) {
+                if (['__proto__', 'constructor', 'prototype'].includes(key)) continue;
+                if (typeof value === 'string' && value.trim()) catalog[key] = value;
+            }
+            dictionaries.set(code, Object.freeze(catalog));
+            return catalog;
+        })();
+        requests.set(code, request);
+        try { return await request; } finally { requests.delete(code); }
     }
 
     async function loadMetadata(code) {
         if (metadata.has(code)) return metadata.get(code);
-        const lines = (await fetchLanguageFile(code, 'metadata.txt'))
-            .split(/\r?\n/)
-            .map(line => line.trim());
-        const entry = Object.freeze({
-            code,
-            name: lines[0] || code.toUpperCase(),
-            author: lines[1] || 'Unknown',
-            version: lines[2] || 'Unknown',
-            flag: `./langs/${code}/${
-                /^[A-Za-z0-9._-]+$/.test(lines[3] || '') ? lines[3] : 'flag.png'
-            }`
-        });
+        const lines = (await fetchLanguageFile(code, 'metadata.txt')).split(/\r?\n/).map(line => line.trim());
+        const flag = /^[A-Za-z0-9._-]+$/.test(lines[3] || '') ? lines[3] : 'flag.png';
+        const entry = Object.freeze({ code, name: lines[0] || code, author: lines[1] || '', version: lines[2] || '', flag: `${CATALOG_BASE}${code}/${flag}` });
         metadata.set(code, entry);
         return entry;
     }
+    function fallbackMetadata(code) {
+        return Object.freeze({ code, name: code, author: '', version: '', flag: `${CATALOG_BASE}en/flag.svg` });
+    }
 
     function interpolate(value, args) {
-        return String(value).replace(/{(\d+)}/g, (match, index) => (
-            args[index] === undefined ? match : String(args[index])
-        ));
-    }
-
-    function rebuildReverseDictionary() {
-        reverseDictionary = new Map();
-        const english = dictionaries.get(DEFAULT_LANGUAGE) || {};
-        for (const [key, englishValue] of Object.entries(english)) {
-            if (typeof englishValue !== 'string' || englishValue.includes('{')) continue;
-            for (const dictionary of dictionaries.values()) {
-                const knownValue = dictionary[key];
-                if (typeof knownValue !== 'string') continue;
-                if (!reverseDictionary.has(knownValue)) {
-                    reverseDictionary.set(knownValue, key);
-                } else if (reverseDictionary.get(knownValue) !== key) {
-                    reverseDictionary.set(knownValue, null);
-                }
-            }
-        }
-    }
-
-    async function initialize() {
-        await Promise.all([
-            loadDictionary(DEFAULT_LANGUAGE),
-            loadDictionary(currentLanguage)
-        ]);
-        await Promise.all(SUPPORTED_LANGUAGES.map(async code => {
-            try {
-                await loadMetadata(code);
-            } catch (error) {
-                console.warn(`Unable to load metadata for ${code}:`, error);
-                metadata.set(code, Object.freeze({
-                    code,
-                    name: code.toUpperCase(),
-                    author: 'Unknown',
-                    version: 'Unknown',
-                    flag: `./langs/${code}/flag.png`
-                }));
-            }
-        }));
-        rebuildReverseDictionary();
-        document.documentElement.lang = currentLanguage;
-        applyKnownText(document);
+        return String(value).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : bidi(args[index]));
     }
 
     function t(key, fallback = key, ...args) {
@@ -1367,121 +116,265 @@
         return interpolate(selected[key] ?? english[key] ?? fallback, args);
     }
 
+    function formatter(type, options = {}) {
+        const key = JSON.stringify([getLocale(), type, options]);
+        if (!formatters.has(key)) {
+            if (formatters.size >= 64) formatters.clear();
+            formatters.set(key, new Intl[type](getLocale(), options));
+        }
+        return formatters.get(key);
+    }
+    function number(value, options = {}) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? formatter('NumberFormat', options).format(numeric) : t('unknown', 'Unknown');
+    }
+    function date(value, options = { dateStyle: 'medium' }) {
+        const timestamp = value instanceof Date ? value : new Date(value);
+        if (value === null || value === undefined || value === '' || !Number.isFinite(timestamp.getTime())) return t('unknown', 'Unknown');
+        return formatter('DateTimeFormat', options).format(timestamp);
+    }
+    function relativeTime(value, now = Date.now()) {
+        const timestamp = value instanceof Date ? value.getTime() : Number(value);
+        if (value === null || value === undefined || value === '' || !Number.isFinite(timestamp) || !Number.isFinite(now)) return t('unknown', 'Unknown');
+        const seconds = (timestamp - now) / 1000;
+        const magnitude = Math.abs(seconds);
+        const units = [[60, 1, 'second'], [3600, 60, 'minute'], [86400, 3600, 'hour'], [604800, 86400, 'day'], [2629800, 604800, 'week'], [31557600, 2629800, 'month'], [Infinity, 31557600, 'year']];
+        const [, divisor, unit] = units.find(([limit]) => magnitude < limit);
+        const amount = Math.round(seconds / divisor) || 0;
+        return formatter('RelativeTimeFormat', { numeric: 'auto' }).format(amount, unit);
+    }
+    function plural(key, count, fallback = key, ...args) {
+        const numeric = Number(count);
+        const category = formatter('PluralRules').select(Number.isFinite(numeric) ? numeric : 0);
+        const englishCategory = new Intl.PluralRules('en').select(numeric);
+        const selected = dictionaries.get(currentLanguage) || {};
+        const english = dictionaries.get(DEFAULT_LANGUAGE) || {};
+        const value = selected[`${key}_${category}`] ?? selected[`${key}_other`] ?? english[`${key}_${englishCategory}`] ?? english[`${key}_other`] ?? selected[key] ?? english[key] ?? fallback;
+        return interpolate(value, [number(count), ...args]);
+    }
+
+    function rebuildReverseDictionary() {
+        reverseDictionary = new Map();
+        englishKeys = new Map();
+        for (const [key, value] of Object.entries(dictionaries.get(DEFAULT_LANGUAGE) || {})) {
+            if (!englishKeys.has(value)) englishKeys.set(value, key);
+            if (value.includes('{') || value.includes('<')) continue;
+            for (const dictionary of dictionaries.values()) {
+                const known = dictionary[key];
+                // Explicit data-i18n keys disambiguate context. Legacy static templates
+                // with synonymous English keys use the first equivalent catalog entry.
+                if (known && !reverseDictionary.has(known)) reverseDictionary.set(known, key);
+            }
+        }
+    }
+    function text(value, ...args) {
+        const key = englishKeys.get(value);
+        return key ? t(key, value, ...args) : interpolate(value, args);
+    }
     function translateKnownText(value) {
         if (typeof value !== 'string') return value;
-        const key = reverseDictionary.get(value);
+        const key = reverseDictionary.get(value) || englishKeys.get(value);
         return key ? t(key, value) : value;
     }
-
     function replaceTokens(html) {
-        return String(html).replace(/\$\$(.*?)\$\$/g, (_match, key) => t(key, `$$${key}$$`));
+        return String(html).replace(/\$\$([A-Za-z0-9_]+)\$\$/g, (_match, key) => t(key, `$$${key}$$`));
     }
-
+    function elements(root, selector) {
+        return [...(root.matches?.(selector) ? [root] : []), ...root.querySelectorAll(selector)];
+    }
+    function clearPropertyBinding(element, attribute) {
+        const computed = computedBindings.get(element);
+        computed?.delete(attribute);
+        if (computed && !computed.size) computedBindings.delete(element);
+        if (attribute === 'textContent') {
+            bindings.delete(element);
+            element.removeAttribute('data-i18n');
+            for (const node of knownTextNodes.keys()) {
+                if (element.contains?.(node)) knownTextNodes.delete(node);
+            }
+        } else {
+            const explicit = attributeBindings.get(element);
+            explicit?.delete(attribute);
+            if (explicit && !explicit.size) attributeBindings.delete(element);
+            const known = knownAttributes.get(element);
+            known?.delete(attribute);
+            if (known && !known.size) knownAttributes.delete(element);
+            element.removeAttribute(`data-i18n-${attribute}`);
+        }
+    }
+    // Dispose a removed subtree explicitly; a closed dialog must not keep its
+    // nodes and render closures alive until a later navigation or locale change.
+    function release(root) {
+        if (!root) return;
+        const within = node => node === root || root.contains?.(node);
+        for (const node of computedBindings.keys()) if (within(node)) computedBindings.delete(node);
+        for (const node of knownTextNodes.keys()) if (within(node)) knownTextNodes.delete(node);
+        for (const node of knownAttributes.keys()) if (within(node)) knownAttributes.delete(node);
+        for (const element of [root, ...(root.querySelectorAll?.('*') || [])]) {
+            bindings.delete(element);
+            attributeBindings.delete(element);
+            element.removeAttribute?.('data-i18n');
+            for (const attribute of localizedAttributes) element.removeAttribute?.(`data-i18n-${attribute}`);
+        }
+    }
+    function bind(element, key, fallback = key, ...args) {
+        if (!element) return element;
+        clearPropertyBinding(element, 'textContent');
+        bindings.set(element, { key, fallback, args });
+        element.dataset.i18n = key;
+        element.textContent = t(key, fallback, ...args);
+        return element;
+    }
+    function bindText(element, source, ...args) {
+        const key = englishKeys.get(source) || reverseDictionary.get(source);
+        bind(element, key || source, source, ...args);
+        if (element) bindings.get(element).source = source;
+        return element;
+    }
+    function bindAttribute(element, attribute, key, fallback = key, ...args) {
+        if (!element || !localizedAttributes.includes(attribute)) return element;
+        clearPropertyBinding(element, attribute);
+        const attributes = attributeBindings.get(element) || new Map();
+        attributes.set(attribute, { key, fallback, args });
+        attributeBindings.set(element, attributes);
+        element.setAttribute(`data-i18n-${attribute}`, key);
+        element.setAttribute(attribute, t(key, fallback, ...args));
+        return element;
+    }
+    function bindTextAttribute(element, attribute, source, ...args) {
+        bindAttribute(element, attribute, englishKeys.get(source) || source, source, ...args);
+        const binding = attributeBindings.get(element)?.get(attribute);
+        if (binding) binding.source = source;
+        return element;
+    }
+    function bindComputed(element, render, attribute = 'textContent') {
+        if (!element || typeof render !== 'function' || !['textContent', ...localizedAttributes].includes(attribute)) return element;
+        clearPropertyBinding(element, attribute);
+        const entries = computedBindings.get(element) || new Map();
+        entries.set(attribute, render);
+        computedBindings.set(element, entries);
+        if (attribute === 'textContent') {
+            element.removeAttribute('data-i18n');
+            element.textContent = render();
+        } else {
+            element.removeAttribute(`data-i18n-${attribute}`);
+            element.setAttribute(attribute, render());
+        }
+        return element;
+    }
     function apply(root = document) {
-        root.querySelectorAll('[data-i18n]').forEach(element => {
-            element.textContent = t(element.dataset.i18n, element.textContent);
+        elements(root, '[data-i18n]').forEach(element => {
+            const binding = bindings.get(element);
+            const args = binding?.args || [];
+            const key = englishKeys.get(binding?.source) || element.dataset.i18n;
+            element.textContent = t(key, binding?.fallback || element.textContent, ...args);
         });
-        root.querySelectorAll('[data-i18n-title]').forEach(element => {
-            element.title = t(element.dataset.i18nTitle, element.title);
-        });
-        root.querySelectorAll('[data-i18n-aria-label]').forEach(element => {
-            element.setAttribute(
-                'aria-label',
-                t(element.dataset.i18nAriaLabel, element.getAttribute('aria-label') || '')
-            );
-        });
+        for (const [element, entries] of computedBindings) {
+            if (element.isConnected === false) { computedBindings.delete(element); continue; }
+            if (root !== document && element !== root && !root.contains(element)) continue;
+            for (const [attribute, render] of entries) {
+                if (attribute === 'textContent') element.textContent = render();
+                else element.setAttribute(attribute, render());
+            }
+        }
+        for (const attribute of localizedAttributes) {
+            elements(root, `[data-i18n-${attribute}]`).forEach(element => {
+                const binding = attributeBindings.get(element)?.get(attribute);
+                const key = englishKeys.get(binding?.source) || element.getAttribute(`data-i18n-${attribute}`);
+                element.setAttribute(attribute, t(key, binding?.fallback || element.getAttribute(attribute) || '', ...(binding?.args || [])));
+            });
+        }
     }
 
+    // This is deliberately an explicit, one-time pass over app-owned static
+    // markup. Do not observe arbitrary mutations: mod titles and comments may
+    // happen to equal UI words and must never be translated.
     function applyKnownText(root = document) {
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
         const nodes = [];
         while (walker.nextNode()) nodes.push(walker.currentNode);
         for (const node of nodes) {
-            if (knownTextNodes.has(node)
-                || node.parentElement?.closest('script, style, textarea, [contenteditable="true"]')) continue;
+            if (knownTextNodes.has(node) || node.parentElement?.closest(ignoredContent)) continue;
             const original = node.nodeValue || '';
-            const content = original.trim();
-            if (!content) continue;
-            const key = reverseDictionary.get(content);
+            const value = original.trim();
+            const key = reverseDictionary.get(value);
             if (!key) continue;
-            knownTextNodes.set(node, key);
-            const translated = t(key, content);
-            const start = original.indexOf(content);
-            node.nodeValue = `${original.slice(0, start)}${translated}${original.slice(start + content.length)}`;
+            knownTextNodes.set(node, { key, prefix: original.slice(0, original.indexOf(value)), suffix: original.slice(original.indexOf(value) + value.length) });
         }
-        for (const element of root.querySelectorAll('[title], [placeholder], [aria-label]')) {
+        for (const element of elements(root, '[title],[placeholder],[aria-label],[alt]')) {
+            if (element.closest(ignoredContent)) continue;
             const attributes = knownAttributes.get(element) || new Map();
-            for (const attribute of ['title', 'placeholder', 'aria-label']) {
-                if (!element.hasAttribute(attribute) || attributes.has(attribute)) continue;
-                const value = element.getAttribute(attribute);
-                const key = reverseDictionary.get(value);
-                if (!key) continue;
-                attributes.set(attribute, key);
-                element.setAttribute(attribute, t(key, value));
+            for (const attribute of ['title', 'placeholder', 'aria-label', 'alt']) {
+                const key = reverseDictionary.get(element.getAttribute(attribute));
+                if (key && !attributes.has(attribute)) attributes.set(attribute, key);
             }
             if (attributes.size) knownAttributes.set(element, attributes);
         }
+        refreshKnownText();
+        apply(root);
     }
-
     function refreshKnownText() {
-        for (const [node, key] of knownTextNodes) {
-            if (!node.isConnected) {
-                knownTextNodes.delete(node);
-                continue;
-            }
-            const original = node.nodeValue || '';
-            const content = original.trim();
-            const start = original.indexOf(content);
-            node.nodeValue = `${original.slice(0, start)}${t(key, content)}${original.slice(start + content.length)}`;
+        for (const [node, binding] of knownTextNodes) {
+            if (!node.isConnected) { knownTextNodes.delete(node); continue; }
+            node.nodeValue = binding.prefix + t(binding.key) + binding.suffix;
         }
         for (const [element, attributes] of knownAttributes) {
-            if (!element.isConnected) {
-                knownAttributes.delete(element);
-                continue;
-            }
-            for (const [attribute, key] of attributes) {
-                element.setAttribute(attribute, t(key, element.getAttribute(attribute) || ''));
-            }
+            if (!element.isConnected) { knownAttributes.delete(element); continue; }
+            for (const [attribute, key] of attributes) element.setAttribute(attribute, t(key));
         }
     }
-
-    async function setLanguage(code, { refreshPage = false } = {}) {
-        const normalized = normalizeLanguage(code);
-        await loadDictionary(normalized);
-        currentLanguage = normalized;
-        localStorage.setItem(STORAGE_KEY, normalized);
-        rebuildReverseDictionary();
-        document.documentElement.lang = normalized;
-        apply(document);
-        refreshKnownText();
-        window.dispatchEvent(new CustomEvent('deltamod-language-change', {
-            detail: { language: normalized }
-        }));
-        if (refreshPage && typeof window.page === 'function' && window.pageN) {
-            await window.page(window.pageN);
+    function documentLocale() {
+        document.documentElement.lang = localeCodes[currentLanguage] || currentLanguage;
+        document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
+    }
+    async function initialize() {
+        try { await loadDictionary(DEFAULT_LANGUAGE); }
+        catch (error) { console.warn('English translations are unavailable; using caller fallbacks until the catalog can be retried.', error); }
+        if (currentLanguage !== DEFAULT_LANGUAGE) {
+            try { await loadDictionary(currentLanguage); }
+            catch (error) { console.warn('Using English translations until the selected catalog is available.', error); }
         }
+        await Promise.all(SUPPORTED_LANGUAGES.map(async code => {
+            try { await loadMetadata(code); }
+            catch { metadata.set(code, fallbackMetadata(code)); }
+        }));
+        rebuildReverseDictionary();
+        documentLocale();
+        applyKnownText(document);
+    }
+    async function setLanguage(code, { refreshPage = false } = {}) {
+        const generation = ++changeGeneration;
+        const normalized = normalizeLanguage(code) || DEFAULT_LANGUAGE;
+        await ready;
+        await Promise.all([
+            loadDictionary(normalized),
+            loadDictionary(DEFAULT_LANGUAGE).catch(error => {
+                console.warn('English translations remain unavailable; using caller fallbacks.', error);
+            })
+        ]);
+        if (generation !== changeGeneration) return currentLanguage;
+        currentLanguage = normalized;
+        currentLocale = formattingLocale(normalized, code);
+        try { localStorage.setItem(STORAGE_KEY, normalized); } catch { /* A restricted WebView still supports this session. */ }
+        rebuildReverseDictionary();
+        documentLocale();
+        refreshKnownText();
+        apply(document);
+        window.dispatchEvent(new CustomEvent('deltamod-language-change', { detail: { language: normalized, locale: getLocale(), direction: document.documentElement.dir } }));
+        if (refreshPage && typeof window.page === 'function' && window.pageN) await window.page(window.pageN);
         return normalized;
     }
-
-    async function getLanguages() {
-        await ready;
-        return SUPPORTED_LANGUAGES.map(code => metadata.get(code));
-    }
-
+    async function getLanguages() { await ready; return SUPPORTED_LANGUAGES.map(code => metadata.get(code) || fallbackMetadata(code)); }
     const ready = initialize().catch(error => {
         console.error('Localization initialization failed:', error);
         currentLanguage = DEFAULT_LANGUAGE;
+        currentLocale = formattingLocale(DEFAULT_LANGUAGE);
+        documentLocale();
     });
-
     window.Localization = Object.freeze({
-        ready,
-        t,
-        apply,
-        applyKnownText,
-        replaceTokens,
-        translateKnownText,
-        getLanguages,
-        getLanguage: () => currentLanguage,
-        setLanguage
+        ready, t, text, apply, applyKnownText, bind, bindText, bindAttribute, bindTextAttribute, bindComputed, release, replaceTokens, translateKnownText,
+        getLanguages, getLanguage: () => currentLanguage, getLocale, setLanguage,
+        number, date, relativeTime, plural, bidi, normalizeLanguage, detectLanguage,
+        supportedLanguages: SUPPORTED_LANGUAGES
     });
 })();

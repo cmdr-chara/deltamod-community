@@ -1,4 +1,124 @@
 (() => {
+const t = (key, fallback, ...args) => window.Localization?.t(key, fallback, ...args)
+    ?? String(fallback).replace(/\{(\d+)\}/g, (match, index) => args[index] ?? match);
+const number = (value, options) => window.Localization?.number?.(value, options)
+    ?? new Intl.NumberFormat(window.Localization?.getLocale?.(), options).format(value);
+const plural = (key, count, fallback, ...args) => window.Localization?.plural?.(key, count, fallback, ...args)
+    ?? t(`${key}_${count === 1 ? 'one' : 'other'}`, fallback, number(count), ...args);
+const localDate = millis => window.Localization?.date?.(millis, { dateStyle: 'medium', timeStyle: 'short' })
+    ?? new Intl.DateTimeFormat(window.Localization?.getLocale?.(), { dateStyle: 'medium', timeStyle: 'short' }).format(millis);
+function bindText(element, render, attribute = 'textContent') {
+    if (!element) return;
+    const compute = typeof render === 'function' ? render : () => String(render ?? '');
+    if (window.Localization?.bindComputed) window.Localization.bindComputed(element, compute, attribute);
+    else if (attribute === 'textContent') element.textContent = compute();
+    else element.setAttribute(attribute, compute());
+}
+function sourceText(source, args = []) {
+    const values = Array.isArray(args) ? args.map(value => typeof value === 'number' ? number(value) : value) : [];
+    return window.Localization?.text?.(source, ...values)
+        ?? String(source).replace(/\{(\d+)\}/g, (match, index) => values[index] ?? match);
+}
+function providerText(record, field, fallback = '') {
+    const source = record?.[`${field}Source`];
+    if (typeof source === 'string' && source.trim()) return sourceText(source, record[`${field}SourceArgs`]);
+    return record?.[field] || (typeof fallback === 'function' ? fallback() : fallback);
+}
+
+function socialCount(value) {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function socialCountLabel(kind, count) {
+    if (count === null) return kind === 'likes'
+        ? t('gb_likes_unknown', 'Like count unavailable') : t('gb_comments_unknown', 'Comment count unavailable');
+    return plural(`gb_${kind}`, count, kind === 'likes' ? '{0} likes' : '{0} comments');
+}
+
+function likeResponseState(response) {
+    const code = typeof response?.data?._sErrorCode === 'string' ? response.data._sErrorCode.toLowerCase() : '';
+    if (code === 'already_liked') return 'already';
+    if (Number.isInteger(response?.status) && response.status >= 200 && response.status < 300
+        && !code && response?.data?._bSuccess !== false && response?.data?.success !== false) return 'liked';
+    return 'failed';
+}
+
+function appendSubmissionTime(parent, mod) {
+    const added = Number(mod._tsDateAdded) || 0;
+    const modified = Math.max(Number(mod._tsDateModified) || 0, Number(mod._tsDateUpdated) || 0);
+    const millis = Math.max(added, modified) * 1000;
+    if (!Number.isFinite(millis) || millis <= 0 || !Number.isFinite(new Date(millis).valueOf())) return;
+    const time = document.createElement('time');
+    time.className = 'modDescSpan iptspan';
+    time.dateTime = new Date(millis).toISOString();
+    bindText(time, () => (localDate(millis)), 'title');
+    bindText(time, () => (modified > added
+        ? t('gb_updated_time', 'Updated {0}', window.Localization?.relativeTime?.(millis) ?? localDate(millis))
+        : t('gb_posted_time', 'Posted {0}', window.Localization?.relativeTime?.(millis) ?? localDate(millis))));
+    parent.append(time);
+}
+
+function createSocialButton(kind, mod, count) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'serietast shop-social-action';
+    button.innerHTML = shopIcon(kind === 'likes' ? 'heart' : 'comment');
+    const label = document.createElement('span');
+    label.className = 'shop-social-label';
+    bindText(label, () => (kind === 'likes' ? t('gb_like', 'Like') : t('gb_comments', 'Comments')));
+    const countNode = document.createElement('span');
+    countNode.className = 'shop-social-count';
+    bindText(countNode, () => (count === null ? '—' : number(count)));
+    bindText(countNode, () => (socialCountLabel(kind, count)), 'aria-label');
+    button.append(label, countNode);
+    bindText(button, () => (socialCountLabel(kind, count)), 'title');
+    if (kind === 'comments') {
+        bindText(button, () => (`${t('gb_view_comments_for', 'View comments for {0}', mod._sName)} · ${socialCountLabel(kind, count)}`), 'aria-label');
+        return { button, label, countNode };
+    }
+    button.setAttribute('aria-pressed', 'false');
+    bindText(button, () => (`${t('gb_like_mod', 'Like {0}', mod._sName)} · ${socialCountLabel(kind, count)}`), 'aria-label');
+    button.disabled = !isGBLoggedIn;
+    if (!isGBLoggedIn) bindText(button, () => (t('gb_like_login', 'Log in to GameBanana to like mods')), 'title');
+    let pending = false;
+    let liked = false;
+    button.onclick = async () => {
+        if (!isCurrentShopPage() || !isGBLoggedIn || pending || liked) return;
+        pending = true;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        bindText(label, () => (t('gb_liking', 'Liking…')));
+        try {
+            const response = await window.deltamodBackend.invoke('gbLikeMod', [mod._sModelName, mod._idRow]);
+            const result = likeResponseState(response);
+            if (result === 'failed') throw localizedError(() => (t('gb_like_retry', 'GameBanana did not confirm the like. Please try again.')));
+            liked = true;
+            if (result === 'liked' && count !== null && count < Number.MAX_SAFE_INTEGER) count++;
+            if (!isCurrentShopPage() || !button.isConnected) return;
+            button.classList.add('is-liked');
+            button.setAttribute('aria-pressed', 'true');
+            bindText(countNode, () => (count === null ? '—' : number(count)));
+            bindText(countNode, () => (socialCountLabel(kind, count)), 'aria-label');
+            bindText(button, () => (socialCountLabel(kind, count)), 'title');
+            bindText(button, () => (`${t('gb_liked', 'Liked')} · ${socialCountLabel(kind, count)}`), 'aria-label');
+        } catch (error) {
+            if (isCurrentShopPage() && button.isConnected) {
+                await htmlAlert(() => (t('gb_like_failed', 'Could not like this mod')),
+                    () => (describeError(error, t('gb_like_retry', 'GameBanana did not confirm the like. Please try again.'))),
+                    [{ text: () => (t('allmods_ok', 'OK')), resolveWith: 'ok' }], 'error');
+            }
+        } finally {
+            pending = false;
+            if (button.isConnected) {
+                button.disabled = liked || !isGBLoggedIn;
+                button.removeAttribute('aria-busy');
+                bindText(label, () => (liked ? t('gb_liked', 'Liked') : t('gb_like', 'Like')));
+            }
+        }
+    };
+    return { button, label, countNode };
+}
+
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
     window._intervals = window._intervals || [];
@@ -43,8 +163,17 @@ function eligibleGameBananaDownloads(files) {
 
 // Tauri rejects invokes with plain strings, so `.message` alone hides the backend reason.
 function describeError(error, fallback) {
+    if (typeof error?.messageSource === 'string' && error.messageSource.trim()) {
+        return window.Localization?.text(error.messageSource) ?? error.message ?? error.messageSource;
+    }
+    if (typeof error?.localizedMessage === 'function') return error.localizedMessage();
     if (typeof error === 'string' && error.trim()) return error;
     return error?.message || fallback;
+}
+function localizedError(render) {
+    const error = new Error(render());
+    error.localizedMessage = render;
+    return error;
 }
 
 function gameSupportsProvider(game, provider) {
@@ -64,7 +193,7 @@ async function resolveShopGame() {
     const supportedGames = (Array.isArray(games) ? games : [])
         .filter(game => SHOP_PROVIDER_DEFS.some(provider => gameSupportsProvider(game, provider.id)));
     if (supportedGames.length === 0) {
-        throw new Error('No supported games are available for the Mod Shop.');
+        throw localizedError(() => (t("shop_ui_no_supported_games_are_available_for_the_mod_shop", "No supported games are available for the Mod Shop.")));
     }
 
     let currentGame = null;
@@ -204,7 +333,7 @@ function createGalleryPreview(image, modName, images) {
 
     image.tabIndex = 0;
     image.setAttribute('role', 'button');
-    image.setAttribute('aria-label', `Preview ${modName} (${images.length} image${images.length === 1 ? '' : 's'})`);
+    bindText(image, () => (t('shop_preview_count', 'Preview {0} ({1})', typeof modName === 'function' ? modName() : modName, plural('shop_images', images.length, '{0} images'))), 'aria-label');
     image.onclick = () => openImageLightbox(modName, images);
     image.onkeydown = event => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -215,7 +344,7 @@ function createGalleryPreview(image, modName, images) {
     if (images.length > 1) {
         const count = document.createElement('span');
         count.className = 'mod-gallery-count';
-        count.innerText = `+${images.length - 1}`;
+        bindText(count, () => (`+${number(images.length - 1)}`));
         count.setAttribute('aria-hidden', 'true');
         preview.appendChild(count);
     }
@@ -248,7 +377,7 @@ function openImageLightbox(modName, imageList, initialIndex = 0) {
     const applyZoom = () => {
         const percent = Math.round(zoom * 100);
         zoomLevel.value = `${percent}%`;
-        zoomLevel.textContent = `${percent}%`;
+        bindText(zoomLevel, () => (number(percent / 100, { style: 'percent', maximumFractionDigits: 0 })));
         zoomOut.disabled = zoom <= 1;
         zoomIn.disabled = zoom >= 3;
         image.style.width = zoom === 1 ? 'auto' : `${percent}%`;
@@ -267,9 +396,10 @@ function openImageLightbox(modName, imageList, initialIndex = 0) {
         const selected = images[currentIndex];
         zoom = 1;
         image.src = selected.urlA;
-        image.alt = `${modName || 'Mod'} preview ${currentIndex + 1}`;
-        title.textContent = modName || 'Image preview';
-        counter.textContent = `${currentIndex + 1} of ${images.length}`;
+        const name = () => typeof modName === 'function' ? modName() : modName;
+        bindText(image, () => (t('shop_preview_image', '{0} preview {1}', name() || t('mod', 'Mod'), number(currentIndex + 1))), 'alt');
+        bindText(title, () => (name() || t("shop_ui_image_preview", "Image preview")));
+        bindText(counter, () => (t('shop_image_position', '{0} of {1}', number(currentIndex + 1), number(images.length))));
         previous.disabled = images.length < 2;
         next.disabled = images.length < 2;
 
@@ -278,7 +408,7 @@ function openImageLightbox(modName, imageList, initialIndex = 0) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'mod-image-lightbox-thumbnail';
-            button.setAttribute('aria-label', `Show image ${index + 1}`);
+            bindText(button, () => (t('shop_show_image', 'Show image {0}', number(index + 1))), 'aria-label');
             button.setAttribute('aria-current', index === currentIndex ? 'true' : 'false');
             const thumbnail = document.createElement('img');
             thumbnail.src = item.urlB || item.urlA;
@@ -318,12 +448,13 @@ function openImageLightbox(modName, imageList, initialIndex = 0) {
         if (event.target === dialog) dialog.close();
     };
     dialog.onkeydown = event => {
+        const direction = document.documentElement.dir === 'rtl' ? -1 : 1;
         if (event.key === 'ArrowLeft') {
             event.preventDefault();
-            move(-1);
+            move(-direction);
         } else if (event.key === 'ArrowRight') {
             event.preventDefault();
-            move(1);
+            move(direction);
         } else if (event.key === '+' || event.key === '=') {
             event.preventDefault();
             setZoom(zoom + 0.25);
@@ -359,9 +490,9 @@ function applyContentFilter(records) {
     const excluded = compatibleRecords.length - visibleRecords.length;
     const status = document.getElementById('contentFilterStatus');
     if (status) {
-        status.innerText = filter === 'all'
-            ? `Showing ${visibleRecords.length} compatible mod${visibleRecords.length === 1 ? '' : 's'} on this page.`
-            : `Showing ${visibleRecords.length}; ${excluded} excluded by the visible Content filter.`;
+        bindText(status, () => (filter === 'all'
+            ? plural('shop_compatible_count', visibleRecords.length, 'Showing {0} compatible mods on this page.')
+            : t('shop_content_filtered_count', 'Showing {0}; {1} excluded by the visible Content filter.', number(visibleRecords.length), number(excluded))));
     }
     return visibleRecords;
 }
@@ -431,13 +562,13 @@ function insertRankedGameBananaRow(table, row, rank) {
 
 async function describeContentRatings(mod, chip) {
     if (!mod._bHasContentRatings) return;
-    chip.innerText = 'Content-rated submission';
+    bindText(chip, () => (t("shop_ui_content_rated_submission", "Content-rated submission")));
     try {
         const response = await fetch(`https://gamebanana.com/apiv11/${mod._sModelName}/${mod._idRow}/ProfilePage`);
         if (!response.ok) return;
         const profile = await response.json();
         const ratings = Object.values(profile._aContentRatings || {});
-        if (ratings.length) chip.innerText = `Content: ${ratings.join(', ')}`;
+        if (ratings.length) bindText(chip, () => (t('shop_content_labels', 'Content: {0}', ratings.join(', '))));
     } catch {}
 }
     
@@ -542,15 +673,15 @@ function shopIcon(name) {
 
 function formatDownloadBytes(value) {
     const bytes = Math.max(0, Number(value) || 0);
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return `${number(0)} B`;
     const units = ['B', 'KB', 'MB', 'GB'];
     const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     const amount = bytes / (1024 ** unit);
     const decimals = unit === 0 || amount >= 10 || Number.isInteger(amount) ? 0 : 1;
-    return `${amount.toFixed(decimals)} ${units[unit]}`;
+    return `${number(amount, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${units[unit]}`;
 }
 
-function updateModDownloadStatus({ phase = 'download', completed = 0, total = 0, currentItem = '' }) {
+function updateModDownloadStatus({ phase = 'download', completed = 0, total = 0, currentItem = '', currentItemSource = '' }) {
     const panel = document.getElementById('modDownloadStatus');
     if (!panel) return;
     const title = document.getElementById('modDownloadStatusTitle');
@@ -567,34 +698,36 @@ function updateModDownloadStatus({ phase = 'download', completed = 0, total = 0,
             ? Math.max(0, Math.min(100, (completedBytes / totalBytes) * 100))
             : 0;
     const titles = {
-        download: 'Downloading mod…',
-        import: 'Importing mod…',
-        complete: 'Mod imported successfully',
-        manual: 'Website confirmation required',
-        failed: 'Download or import failed',
-        cancelled: 'Import cancelled or existing mod kept'
+        download: ['shop_ui_downloading_mod', 'Downloading mod…'],
+        import: ['shop_ui_importing_mod', 'Importing mod…'],
+        complete: ['shop_ui_mod_imported_successfully', 'Mod imported successfully'],
+        manual: ['shop_ui_website_confirmation_required', 'Website confirmation required'],
+        failed: ['shop_ui_download_or_import_failed', 'Download or import failed'],
+        cancelled: ['shop_ui_import_cancelled_or_existing_mod_kept', 'Import cancelled or existing mod kept']
     };
+    const titleDefinition = Object.hasOwn(titles, phase) ? titles[phase] : titles.download;
 
     panel.hidden = false;
     panel.dataset.phase = phase;
-    title.textContent = titles[phase] || titles.download;
-    percent.textContent = phase === 'cancelled'
-        ? 'Not imported'
+    bindText(title, () => t(...titleDefinition));
+    bindText(percent, () => (phase === 'cancelled'
+        ? t("shop_ui_not_imported", "Not imported")
         : phase === 'import'
-        ? 'Importing'
+        ? t("shop_ui_importing", "Importing")
         : phase === 'manual'
-            ? 'Website'
+            ? t("shop_ui_website", "Website")
         : phase === 'failed' && percentage === 0
-            ? 'Failed'
-            : `${Math.round(percentage)}%`;
-    item.textContent = currentItem || 'Mod package';
-    bytes.textContent = totalBytes > 0
+            ? t("shop_ui_failed", "Failed")
+            : number(percentage / 100, { style: 'percent', maximumFractionDigits: 0 })));
+    bindText(item, () => (typeof currentItemSource === 'string' && currentItemSource.trim()
+        ? sourceText(currentItemSource) : typeof currentItem === 'function' ? currentItem() : currentItem) || t('shop_ui_mod_package', 'Mod package'));
+    bindText(bytes, () => (totalBytes > 0
         ? `${formatDownloadBytes(completedBytes)} / ${formatDownloadBytes(totalBytes)}`
         : completedBytes > 0
             ? formatDownloadBytes(completedBytes)
-            : '';
+            : ''));
     track.setAttribute('aria-valuenow', String(Math.round(percentage)));
-    track.setAttribute('aria-valuetext', title.textContent);
+    bindText(track, () => t(...titleDefinition), 'aria-valuetext');
     bar.style.setProperty('--mod-download-progress', `${percentage}%`);
 }
 
@@ -616,7 +749,7 @@ async function search(searchQuery = null) {
         return;
     }
     if (query.length < 2) {
-        await htmlAlert("Search query too short","Please enter at least 2 characters to search.",[{text:"Ok",resolveWith:'ok'}], 'error');
+        await htmlAlert(() => (t("shop_ui_search_query_too_short", "Search query too short")),() => (t("shop_ui_please_enter_at_least_2_characters_to_search", "Please enter at least 2 characters to search.")),[{text:() => (t("shop_ui_ok", "Ok")),resolveWith:'ok'}], 'error');
         return;
     }
 
@@ -631,9 +764,9 @@ async function search(searchQuery = null) {
     const gameID = currentShopGameBananaId();
     if (!gameID) {
         await htmlAlert(
-            'GameBanana unavailable for this game',
-            'Choose a game with GameBanana support from the Mod Shop game selector.',
-            [{ text: 'OK', resolveWith: 'ok' }],
+            () => (t("shop_ui_gamebanana_unavailable_for_this_game", "GameBanana unavailable for this game")),
+            () => (t("shop_ui_choose_a_game_with_gamebanana_support_from_the_mod_shop_game_selector", "Choose a game with GameBanana support from the Mod Shop game selector.")),
+            [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }],
             'error'
         );
         return;
@@ -733,7 +866,7 @@ async function dlmod(dlurl, buttonElem=null, modid, modmodel, currentItem = `Gam
             if (isCurrentShopPage()) updateModDownloadStatus({ phase: 'cancelled', currentItem });
             return false;
         }
-        if (result !== true) throw new Error('The importer did not confirm a completed import. Please retry.');
+        if (result !== true) throw localizedError(() => (t("shop_ui_the_importer_did_not_confirm_a_completed_import_please_retry", "The importer did not confirm a completed import. Please retry.")));
         imported = true;
         if (!isCurrentShopPage()) return true;
         setDownloadButtonIcon(buttonElem, 'done_outline');
@@ -744,9 +877,9 @@ async function dlmod(dlurl, buttonElem=null, modid, modmodel, currentItem = `Gam
         setDownloadButtonIcon(buttonElem, 'cancel');
         updateModDownloadStatus({ phase: 'failed', currentItem });
         await htmlAlert(
-            'Download failed',
-            describeError(error, 'The mod could not be downloaded or imported.'),
-            [{ text: 'OK', resolveWith: 'ok' }]
+            () => (t("shop_ui_download_failed", "Download failed")),
+            () => (describeError(error, t("shop_ui_the_mod_could_not_be_downloaded_or_imported", "The mod could not be downloaded or imported."))),
+            [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }]
         );
         return false;
     } finally {
@@ -789,7 +922,7 @@ async function fetchGameBananaCatalogDirect(url) {
     try {
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) {
-            const error = new Error(`GameBanana returned HTTP ${response.status}.`);
+            const error = localizedError(() => (t('gb_response_http', 'GameBanana returned HTTP {0}.', response.status)));
             error.status = response.status;
             throw error;
         }
@@ -800,7 +933,7 @@ async function fetchGameBananaCatalogDirect(url) {
         };
     } catch (error) {
         if (error?.name === 'AbortError') {
-            const timeoutError = new Error('GameBanana did not respond before the request timed out.');
+            const timeoutError = localizedError(() => (t("shop_ui_gamebanana_did_not_respond_before_the_request_timed_out", "GameBanana did not respond before the request timed out.")));
             timeoutError.code = 'GAMEBANANA_TIMEOUT';
             throw timeoutError;
         }
@@ -821,7 +954,7 @@ async function browseGameBananaCatalog(url) {
         const response = await Promise.race([
             nativeRequest,
             new Promise((_, reject) => setTimeout(() => {
-                const error = new Error('The native GameBanana request timed out.');
+                const error = localizedError(() => (t("shop_ui_the_native_gamebanana_request_timed_out", "The native GameBanana request timed out.")));
                 error.code = 'GAMEBANANA_NATIVE_TIMEOUT';
                 reject(error);
             }, 9000))
@@ -829,9 +962,7 @@ async function browseGameBananaCatalog(url) {
         if (response?.ok && response.result?.payload !== undefined) {
             return response.result;
         }
-        nativeFailure = new Error(
-            response?.error?.message || 'The native GameBanana catalogue request failed.'
-        );
+        nativeFailure = localizedError(() => (response?.error?.message || t("shop_ui_the_native_gamebanana_catalogue_request_failed", "The native GameBanana catalogue request failed.")));
         nativeFailure.code = response?.error?.code || 'provider_unavailable';
     } catch (error) {
         nativeFailure = error;
@@ -871,8 +1002,8 @@ async function renderMods(table, GB_API, filter, gameID) {
         if (isCurrentShopPage()) {
             renderGameBananaFailure(
                 table,
-                'GameBanana could not be loaded',
-                error?.message || 'The catalogue request failed. Check your connection and try again.',
+                () => t("shop_ui_gamebanana_could_not_be_loaded", "GameBanana could not be loaded"),
+                () => describeError(error, t("shop_ui_the_catalogue_request_failed_check_your_connection_and_try_again", "The catalogue request failed. Check your connection and try again.")),
                 requestedPage
             );
         }
@@ -881,9 +1012,9 @@ async function renderMods(table, GB_API, filter, gameID) {
 
     const status = document.getElementById('contentFilterStatus');
     if (catalog.stale) {
-        status.innerText = 'Showing saved GameBanana results while the live catalogue is unavailable.';
+        bindText(status, () => (t("shop_ui_showing_saved_gamebanana_results_while_the_live_catalogue_is_unavailable", "Showing saved GameBanana results while the live catalogue is unavailable.")));
     } else if (catalog.cached) {
-        status.innerText = 'Loaded this GameBanana page from the local catalogue cache.';
+        bindText(status, () => (t("shop_ui_loaded_this_gamebanana_page_from_the_local_catalogue_cache", "Loaded this GameBanana page from the local catalogue cache.")));
     }
 
     var featuredIDs = featuredData.map(x => {return {id: x._idRow, period: x._sPeriod};});
@@ -914,9 +1045,9 @@ async function renderMods(table, GB_API, filter, gameID) {
             var tr = document.createElement('tr');
             var td = document.createElement('td');
             td.colSpan = 2;
-            td.innerText = currentContentFilter() === 'all'
-                ? "No mods were found matching your query."
-                : "No submissions on this page match the active Content filter.";
+            bindText(td, () => (currentContentFilter() === 'all'
+                ? t("shop_ui_no_mods_were_found_matching_your_query", "No mods were found matching your query.")
+                : t("shop_ui_no_submissions_on_this_page_match_the_active_content_filter", "No submissions on this page match the active Content filter.")));
             tr.appendChild(td);
             table.appendChild(tr);
             gameBananaHasMore = false;
@@ -934,7 +1065,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                 td0.style.display = 'flex';
                 td0.style.alignItems = 'center';
                 td0.style.gap = '14px';
-                td0.style.justifyContent = 'left';
+                td0.style.justifyContent = 'flex-start';
                 // Rendering of td0
                 {
                 let thumbs = getAllThumbs(mod);
@@ -943,7 +1074,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                 setCardImageSource(img, thumbs[0]);
                 img.loading = 'lazy';
                 img.decoding = 'async';
-                img.alt = `${mod._sName || 'Mod'} preview`;
+                bindText(img, () => (t('shop_preview', '{0} preview', mod._sName || t('mod', 'Mod'))), 'alt');
                 img.onerror = () => {
                     img.onerror = null;
                     img.src = './img/mod-placeholder.png';
@@ -967,6 +1098,8 @@ async function renderMods(table, GB_API, filter, gameID) {
                 biggerSpan.style.fontSize = '1.2em';
                 biggerSpan.style.marginBottom = '0px';
                 biggerSpan.innerText = mod._sName;
+                biggerSpan.dataset.userContent = '';
+                biggerSpan.dir = 'auto';
                 biggerSpan.style.cursor = 'pointer';
                 biggerSpan.onclick = () => {
                     window.open(mod._sProfileUrl, '_blank');
@@ -988,16 +1121,15 @@ async function renderMods(table, GB_API, filter, gameID) {
                 otherInfoSpan.style.marginTop = '7px';
                 otherInfoSpan.style.width = '100%';
 
-                var nameauthor = mod._aSubmitter._sName;
-                // easter egg for the tenna lover
-                if (mod._aSubmitter._idRow == 1712567) {
-                    nameauthor += ' (Tenna lover)';
-                }
+                const authorName = () => {
+                    const name = mod._aSubmitter?._sName || t('gb_unknown_author', 'Unknown author');
+                    return mod._aSubmitter?._idRow == 1712567 ? t('shop_tenna_lover', '{0} (Tenna lover)', name) : name;
+                };
                 var authorSpan = document.createElement('span');
                 authorSpan.className = 'modAuthorSpan iptspan';
                 authorSpan.style.marginRight = '12px';
                 var authorImage = document.createElement('img');
-                authorImage.src = mod._aSubmitter._sAvatarUrl || './img/mod-placeholder.png';
+                authorImage.src = mod._aSubmitter?._sAvatarUrl || './img/mod-placeholder.png';
                 authorImage.alt = '';
                 authorImage.loading = 'lazy';
                 authorImage.decoding = 'async';
@@ -1006,9 +1138,13 @@ async function renderMods(table, GB_API, filter, gameID) {
                     authorImage.onerror = null;
                     authorImage.src = './img/mod-placeholder.png';
                 };
-                authorSpan.append(authorImage, document.createTextNode(nameauthor));
+                const authorLabel = document.createElement('span');
+                authorLabel.dataset.userContent = '';
+                bindText(authorLabel, () => t('gb_author_label', 'By {0}', authorName()));
+                authorSpan.append(authorImage, authorLabel);
+                authorSpan.dir = 'auto';
                 authorSpan.onclick = () => {
-                    window.open(mod._aSubmitter._sProfileUrl, '_blank');
+                    if (mod._aSubmitter?._sProfileUrl) window.open(mod._aSubmitter._sProfileUrl, '_blank');
                 };
                 authorSpan.style.cursor = 'pointer';
 
@@ -1018,20 +1154,23 @@ async function renderMods(table, GB_API, filter, gameID) {
                     img.style.borderColor = 'gold';
 
                     var periodsDesc = [
-                        ["alltime","All-time featured"],
-                        ["year","Best of this year"],
-                        ["6month","Best of last 6 months"],
-                        ["3month","Best of last 3 months"],
-                        ["month","Best of this month"],
-                        ["week","Best of this week"],
-                        ["today","Best of today"]
+                        ['alltime', 'shop_ui_all_time_featured', 'All-time featured'],
+                        ['year', 'shop_ui_best_of_this_year', 'Best of this year'],
+                        ['6month', 'shop_ui_best_of_last_6_months', 'Best of last 6 months'],
+                        ['3month', 'shop_ui_best_of_last_3_months', 'Best of last 3 months'],
+                        ['month', 'shop_ui_best_of_this_month', 'Best of this month'],
+                        ['week', 'shop_ui_best_of_this_week', 'Best of this week'],
+                        ['today', 'shop_ui_best_of_today', 'Best of today']
                     ]
                     var featSpan = document.createElement('span');
                     featSpan.className = 'modFeaturedSpan iptspan';
                     featSpan.style.display = 'inline-block';
                     for (let pd of periodsDesc) {
                     if (featuredIDs.find(x => x.id === mod._idRow && x.period === pd[0])) {
-                        featSpan.innerHTML = `${icon((pd[0] == 'alltime' ? "award_star" : "editor_choice"),'1.1em')} ${pd[1]}`;
+                        featSpan.innerHTML = icon(pd[0] === 'alltime' ? 'award_star' : 'editor_choice', '1.1em');
+                        const featureLabel = document.createElement('span');
+                        bindText(featureLabel, () => ` ${t(pd[1], pd[2])}`);
+                        featSpan.append(featureLabel);
                         break;
                     }
                     }
@@ -1050,53 +1189,26 @@ async function renderMods(table, GB_API, filter, gameID) {
                 }
                 div1.appendChild(otherInfoSpan);
 
-                var addDate = mod._tsDateAdded || 0;
-                var modDate = mod._tsDateModified || 0;
-                const timestamp = Math.max(addDate, modDate);
-
-                if (timestamp > 0) {
-                    var date = new Date(timestamp * 1000);
-                    var desc = document.createElement('span');
-                    desc.className = 'modDescSpan iptspan';
-                    const relativeDate = (() => {
-                    const diffSeconds = Math.round((date.getTime() - Date.now()) / 1000);
-                    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-                    /** @type {Array<{limit:number,value:number,unit:Intl.RelativeTimeFormatUnit}>} */
-                    const units = [
-                        { limit: 60, value: 1, unit: 'second' },
-                        { limit: 3600, value: 60, unit: 'minute' },
-                        { limit: 86400, value: 3600, unit: 'hour' },
-                        { limit: 2592000, value: 86400, unit: 'day' },
-                        { limit: 31536000, value: 2592000, unit: 'month' },
-                        { limit: Infinity, value: 31536000, unit: 'year' }
-                    ];
-
-                    for (const { limit, value, unit } of units) {
-                        if (Math.abs(diffSeconds) < limit) {
-                            return rtf.format(Math.round(diffSeconds / value), /** @type {Intl.RelativeTimeFormatUnit} */ (unit));
-                        }
-                    }
-                    })();
-
-                    desc.innerHTML = icon('acute', '1.1em') + ' ' + relativeDate;
-                    otherInfoSpan.appendChild(desc);
-                }
+                appendSubmissionTime(otherInfoSpan, mod);
 
                 var summary = document.createElement('div');
                 summary.className = 'external-source-summary calibri';
-                summary.innerText = mod._sDescription || 'No description was provided.';
+                summary.dataset.userContent = '';
+                summary.dir = 'auto';
+                bindText(summary, () => (mod._sDescription || t("shop_ui_no_description_was_provided", "No description was provided.")));
                 div1.appendChild(summary);
                 }
 
                 var td1 = document.createElement('td');
                 td1.style.textAlign = 'center';
+                td1.className = 'shop-action-cell';
                 // Rendering of td1
                 {
                     var dlBtn = document.createElement('button');
                     dlBtn.innerHTML = shopIcon('download');
                     dlBtn.className = 'serietast';
-                    dlBtn.title = 'Download and import mod';
-                    dlBtn.setAttribute('aria-label', `Download ${mod._sName}`);
+                    bindText(dlBtn, () => (t("shop_ui_download_and_import_mod", "Download and import mod")), 'title');
+                    bindText(dlBtn, () => (t('shop_download_mod', 'Download {0}', mod._sName)), 'aria-label');
                     dlBtn.onclick = async () => {
                         if (!isCurrentShopPage() || gameBananaDownloadActive || dlBtn.disabled) return;
                         dlBtn.disabled = true;
@@ -1121,11 +1233,11 @@ async function renderMods(table, GB_API, filter, gameID) {
                                 response = await browseGameBananaCatalog(profileUrl);
                             }
                             dlpage = response.payload;
-                            if (!Array.isArray(dlpage?._aFiles)) throw new Error('GameBanana returned an invalid file list.');
+                            if (!Array.isArray(dlpage?._aFiles)) throw localizedError(() => (t("shop_ui_gamebanana_returned_an_invalid_file_list", "GameBanana returned an invalid file list.")));
                         } catch (error) {
                             resetDownloadButton();
                             if (isCurrentShopPage()) {
-                                await htmlAlert('Download failed', describeError(error, 'The file list could not be loaded. Try again.'), [{ text: 'OK', resolveWith: 'ok' }]);
+                                await htmlAlert(() => (t("shop_ui_download_failed", "Download failed")), () => (describeError(error, t("shop_ui_the_file_list_could_not_be_loaded_try_again", "The file list could not be loaded. Try again."))), [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }]);
                             }
                             return;
                         }
@@ -1140,7 +1252,7 @@ async function renderMods(table, GB_API, filter, gameID) {
 
                         if (eligibleDownloads.length === 0) {
                             setDownloadButtonIcon(dlBtn, 'cancel');
-                            var open = await htmlAlert("One-click download not available", "This mod cannot be downloaded via Deltamod because the owner did not package it for usage with the tool.",[{text:"Ok",resolveWith:'no',},{text:"Open mod page on GameBanana",resolveWith:'yes'}], 'web_traffic');
+                            var open = await htmlAlert(() => (t("shop_ui_one_click_download_not_available", "One-click download not available")), () => (t("shop_ui_this_mod_cannot_be_downloaded_via_deltamod_because_the_owner_did_not_package_it_for_u", "This mod cannot be downloaded via Deltamod because the owner did not package it for usage with the tool.")),[{text:() => (t("shop_ui_ok", "Ok")),resolveWith:'no',},{text:() => (t("shop_ui_open_mod_page_on_gamebanana", "Open mod page on GameBanana")),resolveWith:'yes'}], 'web_traffic');
                             if (open === 'yes') {
                                 window.open(mod._sProfileUrl, '_blank');
                             }
@@ -1183,6 +1295,7 @@ async function renderMods(table, GB_API, filter, gameID) {
 
                                 var filename = document.createElement('span');
                                 filename.innerText = file._sFile;
+                                filename.dataset.userContent = '';
                                 filename.style.display = 'block';
                                 filename.style.fontWeight = 'bold';
                                 filename.style.fontSize = '1.1em';
@@ -1190,13 +1303,13 @@ async function renderMods(table, GB_API, filter, gameID) {
 
                                 var filesize = document.createElement('span');
                                 filesize.style.display = 'block';
-                                filesize.innerText = ` (${(file._nFilesize / 1024 / 1024).toFixed(2)} MB)`;
+                                bindText(filesize, () => (` (${formatDownloadBytes(file._nFilesize)})`));
                                 filesize.style.fontSize = '0.9em';
                                 details.appendChild(filesize);
 
                                 var filedesc = document.createElement('span');
                                 filedesc.style.display = 'block';
-                                filedesc.innerText = file._sDescription || "No description provided.";
+                                bindText(filedesc, () => (file._sDescription || t("shop_ui_no_description_provided", "No description provided.")));
                                 filedesc.style.fontSize = '0.9em';
                                 filedesc.style.color = '#ffffff60';
                                 details.appendChild(filedesc);
@@ -1204,7 +1317,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                                 var filedate = document.createElement('span');
                                 var fdate = new Date(file._tsDateAdded * 1000);
                                 filedate.style.display = 'block';
-                                filedate.innerText = `Added on ${fdate.toLocaleDateString()} at ${fdate.toLocaleTimeString()}`;
+                                bindText(filedate, () => (t('shop_file_added', 'Added {0}', Number.isFinite(fdate.valueOf()) ? localDate(fdate.valueOf()) : t('shop_date_unavailable', 'Date unavailable'))));
                                 filedate.style.fontSize = '0.9em';
                                 filedate.style.color = '#ffffff60';
                                 details.appendChild(filedate);
@@ -1216,7 +1329,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                                     avspan.style.color = '#ffffff';
                                     avspan.style.backgroundColor = '#980000';
                                     avspan.style.padding = '2px 4px';
-                                    avspan.innerText = `File flagged: ${file._sAnalysisResultVerbose}`;
+                                    bindText(avspan, () => (t('shop_file_flagged', 'File flagged: {0}', file._sAnalysisResultVerbose)));
                                     details.appendChild(avspan);
                                 }
                             });
@@ -1224,7 +1337,7 @@ async function renderMods(table, GB_API, filter, gameID) {
                             const cancelChoice = document.createElement('button');
                             cancelChoice.type = 'button';
                             cancelChoice.dataset.i18n = 'cancel';
-                            cancelChoice.textContent = window.Localization.t('cancel', 'Cancel');
+                            bindText(cancelChoice, () => (window.Localization.t('cancel', 'Cancel')));
                             cancelChoice.onclick = () => {
                                 dtr.remove();
                                 resetDownloadButton();
@@ -1246,42 +1359,17 @@ async function renderMods(table, GB_API, filter, gameID) {
 
                     td1.appendChild(dlBtn);
 
-                    var commentBtn = document.createElement('button');
-                    commentBtn.innerHTML = shopIcon('comment');
-                    commentBtn.style.marginLeft = '8px';
-                    commentBtn.className = 'serietast';
-                    commentBtn.title = 'View comments';
-                    commentBtn.setAttribute('aria-label', `View comments for ${mod._sName}`);
-                    commentBtn.onclick = async () => {
+                    const { button: commentBtn } = createSocialButton('comments', mod, socialCount(mod._nPostCount));
+                    commentBtn.onclick = () => {
                         window._pageArguments = {
                             id: mod._idRow,
-                            model: mod._sModelName
+                            model: mod._sModelName,
+                            returnArguments: preserveShopArguments({ lp: window.PAGE, leSearchQuery: csearch, gbAPI: GB_API, gbAPIFilter: filter })
                         };
                         page('gamebanana-leave-comment');
                     };
                     td1.appendChild(commentBtn);
-
-                    var likeBtn = document.createElement('button');
-                    likeBtn.innerHTML = shopIcon('heart');
-                    likeBtn.style.marginLeft = '8px';
-                    likeBtn.className = 'serietast';
-                    likeBtn.title = isGBLoggedIn ? 'Like mod' : 'Log in to GameBanana to like mods';
-                    likeBtn.setAttribute('aria-label', `Like ${mod._sName}`);
-                    likeBtn.disabled = !isGBLoggedIn;
-                    likeBtn.onclick = async () => {
-                        let res = await window.deltamodBackend.invoke('gbLikeMod',[mod._sModelName, mod._idRow]);
-                        if (res.status == 200) {
-                            setDownloadButtonIcon(likeBtn, 'sentiment_very_satisfied');
-                            likeBtn.disabled = true;
-                        }
-                        else if (res.data._sErrorCode.toLowerCase() == 'already_liked') {
-                            await htmlAlert("Can't like the mod","You've already liked this mod. Can't get any more likes than that!",[{text:'Ok',resolveWith:'ok'}], 'sentiment_very_satisfied');
-                            setDownloadButtonIcon(likeBtn, 'sentiment_very_satisfied');
-                            likeBtn.disabled = true;
-                        } else {
-                            await htmlAlert("Can't like the mod",res.data._sErrorCode,[{text:'Ok',resolveWith:'ok'}], 'error');
-                        }
-                    };
+                    const { button: likeBtn } = createSocialButton('likes', mod, socialCount(mod._nLikeCount));
                     td1.appendChild(likeBtn);
                 }
 
@@ -1308,8 +1396,8 @@ async function renderMods(table, GB_API, filter, gameID) {
         if (isCurrentShopPage()) {
             renderGameBananaFailure(
                 table,
-                'GameBanana results could not be rendered',
-                e?.message || 'The catalogue returned data that Community could not display.',
+                () => t('shop_ui_gamebanana_could_not_be_loaded', 'GameBanana could not be loaded'),
+                () => describeError(e, t('shop_ui_the_selected_mod_catalogue_could_not_be_loaded', 'The selected mod catalogue could not be loaded.')),
                 requestedPage
             );
         }
@@ -1325,7 +1413,7 @@ function renderGameBananaFailure(table, title, message, requestedPage) {
     const retry = () => loadGameBananaPage(requestedPage);
     if (firstgeneration) {
         renderSourceState(table, title, message, {
-            label: window.Localization.t('refine_retry', 'Retry'), run: retry
+            label: () => t('refine_retry', 'Retry'), run: retry
         });
         return;
     }
@@ -1341,11 +1429,11 @@ function renderGameBananaFailure(table, title, message, requestedPage) {
     detail.className = 'calibri';
     detail.setAttribute('role', 'status');
     detail.dataset.i18n = 'shop_next_page_failed';
-    detail.textContent = window.Localization.t('shop_next_page_failed', 'The next page could not be loaded. Your current results are still here.');
+    bindText(detail, () => (window.Localization.t('shop_next_page_failed', 'The next page could not be loaded. Your current results are still here.')));
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.i18n = 'refine_retry';
-    button.textContent = window.Localization.t('refine_retry', 'Retry');
+    bindText(button, () => (window.Localization.t('refine_retry', 'Retry')));
     button.onclick = retry;
     cell.append(detail, button);
     row.append(cell);
@@ -1360,15 +1448,15 @@ function renderSourceState(table, title, message, action = null) {
     td.colSpan = 2;
     td.className = 'shop-state';
     const heading = document.createElement('h2');
-    heading.innerText = title;
+    bindText(heading, title);
     const detail = document.createElement('p');
     detail.className = 'calibri';
-    detail.innerText = message;
+    bindText(detail, message);
     td.append(heading, detail);
     if (action) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.innerText = action.label;
+        bindText(button, action.label);
         button.onclick = action.run;
         td.appendChild(button);
     }
@@ -1411,11 +1499,8 @@ function renderSourceLoading(table, rowCount = 4) {
 
 function formatSourceDate(value) {
     const date = new Date(value);
-    if (Number.isNaN(date.valueOf())) return 'Date unavailable';
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short'
-    }).format(date);
+    if (Number.isNaN(date.valueOf())) return t("shop_date_unavailable", "Date unavailable");
+    return localDate(date.valueOf());
 }
 
 function setExternalSourceControlsDisabled(disabled) {
@@ -1498,19 +1583,15 @@ function formatRateLimitMessage(error) {
     const { waitMs, retryAtMs } = nexusRateLimitMetadata(error);
     const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
     const waitText = waitSeconds < 120
-        ? `${waitSeconds} second${waitSeconds === 1 ? '' : 's'}`
-        : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-            .format(new Date(retryAtMs));
-    const quotaParts = ['daily', 'hourly']
-        .map(period => {
-            const window = error?.quota?.[period];
-            if (!window || !Number.isFinite(Number(window.remaining))) return '';
-            const label = period === 'daily' ? 'today' : 'this hour';
-            return `${window.remaining} ${label}`;
-        })
-        .filter(Boolean);
-    const quotaText = quotaParts.length ? ` Remaining quota: ${quotaParts.join(', ')}.` : '';
-    return `Nexus Mods asked Community to wait before another catalogue request. Try again after ${waitText}.${quotaText}`;
+        ? plural('shop_rate_seconds', waitSeconds, '{0} seconds') : localDate(retryAtMs);
+    const quotaParts = ['daily', 'hourly'].map(period => {
+        const quota = error?.quota?.[period];
+        if (!quota || !Number.isFinite(Number(quota.remaining))) return '';
+        return period === 'daily' ? t('shop_quota_today', '{0} today', number(quota.remaining))
+            : t('shop_quota_hour', '{0} this hour', number(quota.remaining));
+    }).filter(Boolean);
+    const quotaText = quotaParts.length ? t('shop_quota_remaining', 'Remaining quota: {0}.', quotaParts.join(', ')) : '';
+    return t('shop_rate_wait', 'Nexus Mods asked Community to wait before another catalogue request. Try again after {0}. {1}', waitText, quotaText).trim();
 }
 
 function scheduleNexusRateLimitRetry(table, error) {
@@ -1525,9 +1606,9 @@ function scheduleNexusRateLimitRetry(table, error) {
         setExternalSourceControlsDisabled(false);
         renderSourceState(
             table,
-            'Nexus Mods ready to retry',
-            'The reported quota window has elapsed. Retry when you are ready.',
-            { label: 'Retry', run: () => initializeExternalSource(table) }
+            () => t("shop_ui_nexus_mods_ready_to_retry", "Nexus Mods ready to retry"),
+            () => t("shop_ui_the_reported_quota_window_has_elapsed_retry_when_you_are_ready", "The reported quota window has elapsed. Retry when you are ready."),
+            { label: () => t("shop_ui_retry", "Retry"), run: () => initializeExternalSource(table) }
         );
     }, delay);
 }
@@ -1542,14 +1623,16 @@ async function downloadNexusSource(item, button) {
     const original = button.innerHTML;
     button.disabled = true;
     setDownloadButtonIcon(button, 'progress_activity');
-    updateModDownloadStatus({ phase: 'download', currentItem: item.title });
+    const itemTitle = () => providerText(item, 'title', () => t('mod', 'Mod'));
+    updateModDownloadStatus({ phase: 'download', currentItem: itemTitle });
     const unsubscribe = window.communityAPI.modSources.onProgress(progress => {
         if (progress.operationId !== operationId) return;
         updateModDownloadStatus({
             phase: progress.phase || 'download',
             completed: progress.completed,
             total: progress.total,
-            currentItem: progress.currentItem || item.title
+            currentItem: progress.currentItem || itemTitle,
+            currentItemSource: progress.currentItemSource
         });
         if (progress.total > 0) {
             const percentage = Math.max(0, Math.min(100, (progress.completed / progress.total) * 100));
@@ -1564,14 +1647,15 @@ async function downloadNexusSource(item, button) {
             sourceUrl: item.sourceUrl
         });
         if (response?.ok === false) {
-            const error = new Error(response?.error?.message || 'Nexus Mods download is unavailable.');
+            const error = localizedError(() => describeError(response?.error, t("shop_ui_nexus_mods_download_is_unavailable", "Nexus Mods download is unavailable.")));
+            if (typeof response?.error?.messageSource === 'string') error.messageSource = response.error.messageSource;
             error.code = response?.error?.code || 'NEXUS_DOWNLOAD_FAILED';
             if (Number.isInteger(response?.error?.status)) error.status = response.error.status;
             copyRateLimitMetadata(error, response?.error);
             throw error;
         }
         setDownloadButtonIcon(button, 'done_outline');
-        updateModDownloadStatus({ phase: 'complete', currentItem: item.title });
+        updateModDownloadStatus({ phase: 'complete', currentItem: itemTitle });
     } catch (error) {
         setDownloadButtonIcon(button, 'cancel');
         const authorizationRequired = [
@@ -1586,33 +1670,33 @@ async function downloadNexusSource(item, button) {
         );
         updateModDownloadStatus({
             phase: manual ? 'manual' : 'failed',
-            currentItem: manual ? item.title : error?.message || item.title
+            currentItem: () => manual ? itemTitle() : describeError(error, itemTitle())
         });
         if (isNexusRateLimited(error)) {
             await htmlAlert(
-                'Nexus Mods rate limit reached',
-                formatRateLimitMessage(error),
-                [{ text: 'OK', resolveWith: 'ok' }],
+                () => (t("shop_ui_nexus_mods_rate_limit_reached", "Nexus Mods rate limit reached")),
+                () => (formatRateLimitMessage(error)),
+                [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }],
                 'error'
             );
             return;
         }
         const choice = await htmlAlert(
-            authorizationRequired
-                ? 'Nexus Mods authorization required'
-                : manual ? 'Download confirmation required' : 'Nexus Mods download failed',
-            authorizationRequired
-                ? 'Direct download needs Nexus Mods authorization. Connect with OAuth in Settings, then try again or continue on the official mod page.'
+            () => (authorizationRequired
+                ? t("shop_ui_nexus_mods_authorization_required", "Nexus Mods authorization required")
+                : manual ? t("shop_ui_download_confirmation_required", "Download confirmation required") : t("shop_ui_nexus_mods_download_failed", "Nexus Mods download failed")),
+            () => (authorizationRequired
+                ? t("shop_ui_direct_download_needs_nexus_mods_authorization_connect_with_oauth_in_settings_then_tr", "Direct download needs Nexus Mods authorization. Connect with OAuth in Settings, then try again or continue on the official mod page.")
                 : manual
-                    ? 'Nexus Mods allows this download from its website, but not through the direct API for this account. Open the mod page to confirm the download, or import the archive after saving it.'
-                : (error?.message || 'The archive could not be downloaded and imported.'),
+                    ? t("shop_ui_nexus_mods_allows_this_download_from_its_website_but_not_through_the_direct_api_for_t", "Nexus Mods allows this download from its website, but not through the direct API for this account. Open the mod page to confirm the download, or import the archive after saving it.")
+                : describeError(error, t("shop_ui_the_archive_could_not_be_downloaded_and_imported", "The archive could not be downloaded and imported."))),
             authorizationRequired || manual
                 ? [
-                    { text: 'Open Nexus Mods', resolveWith: 'open' },
-                    ...(manual ? [{ text: 'Import archive', resolveWith: 'import' }] : []),
-                    { text: 'Cancel', resolveWith: 'cancel' }
+                    { text: () => (t("shop_ui_open_nexus_mods", "Open Nexus Mods")), resolveWith: 'open' },
+                    ...(manual ? [{ text: () => (t("shop_ui_import_archive", "Import archive")), resolveWith: 'import' }] : []),
+                    { text: () => (t("shop_ui_cancel", "Cancel")), resolveWith: 'cancel' }
                 ]
-                : [{ text: 'OK', resolveWith: 'ok' }],
+                : [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }],
             authorizationRequired || manual ? undefined : 'error'
         );
         if (choice === 'open') {
@@ -1621,13 +1705,13 @@ async function downloadNexusSource(item, button) {
             try {
                 const imported = await window.deltamodBackend.invoke('importMod', []);
                 if (imported) {
-                    updateModDownloadStatus({ phase: 'complete', currentItem: item.title });
+                    updateModDownloadStatus({ phase: 'complete', currentItem: itemTitle });
                 }
             } catch (importError) {
                 await htmlAlert(
-                    'Import failed',
-                    importError?.message || 'The downloaded archive could not be imported.',
-                    [{ text: 'OK', resolveWith: 'ok' }],
+                    () => (t("shop_ui_import_failed", "Import failed")),
+                    () => (importError?.message || t("shop_ui_the_downloaded_archive_could_not_be_imported", "The downloaded archive could not be imported.")),
+                    [{ text: () => (t("shop_ui_ok", "OK")), resolveWith: 'ok' }],
                     'error'
                 );
             }
@@ -1647,7 +1731,7 @@ const EXTERNAL_SOURCE_LABELS = Object.freeze({
 });
 
 function externalSourceLabel(provider = SHOP_PROVIDER) {
-    return EXTERNAL_SOURCE_LABELS[provider] || 'External source';
+    return EXTERNAL_SOURCE_LABELS[provider] || t("shop_ui_external_source", "External source");
 }
 
 function renderExternalMods(table, result) {
@@ -1657,20 +1741,24 @@ function renderExternalMods(table, result) {
     const status = document.getElementById('contentFilterStatus');
     const attribution = document.getElementById('sourceAttribution');
     const providerLabel = externalSourceLabel();
-    status.innerText = SHOP_PROVIDER === 'moddb'
-        ? `Showing all ${items.length} download${items.length === 1 ? '' : 's'} exposed by ModDB's recent RSS feed.`
-        : `Showing ${items.length} Nexus mod${items.length === 1 ? '' : 's'}.`;
-    if (result?.stale) {
-        status.innerText += ' Showing saved results because the live catalogue is unavailable.';
-    } else if (result?.cached) {
-        status.innerText += ' Loaded from the local catalogue cache.';
-    }
-    attribution.replaceChildren(document.createTextNode(result?.attribution || ''));
+    bindText(status, () => {
+        const count = SHOP_PROVIDER === 'moddb'
+            ? plural('shop_moddb_count', items.length, 'Showing all {0} downloads exposed by ModDB’s recent RSS feed.')
+            : plural('shop_nexus_count', items.length, 'Showing {0} Nexus mods.');
+        const freshness = result?.stale
+            ? t('shop_ui_showing_saved_results_because_the_live_catalogue_is_unavailable', 'Showing saved results because the live catalogue is unavailable.')
+            : result?.cached ? t('shop_ui_loaded_from_the_local_catalogue_cache', 'Loaded from the local catalogue cache.') : '';
+        return [count, freshness].filter(Boolean).join(' ');
+    });
+    const attributionLabel = document.createElement('span');
+    attributionLabel.dataset.userContent = '';
+    bindText(attributionLabel, () => providerText(result, 'attribution'));
+    attribution.replaceChildren(attributionLabel);
     if (SHOP_PROVIDER === 'moddb' && result?.catalogUrl) {
         const browseFullCatalog = document.createElement('a');
         browseFullCatalog.href = result.catalogUrl;
         browseFullCatalog.className = 'source-catalog-link';
-        browseFullCatalog.innerText = `Browse the full ${providerLabel} catalogue`;
+        bindText(browseFullCatalog, () => (t('shop_full_catalogue', 'Browse the full {0} catalogue', providerLabel)));
         browseFullCatalog.onclick = event => {
             event.preventDefault();
             return window.communityAPI.modSources.open({
@@ -1684,12 +1772,12 @@ function renderExternalMods(table, result) {
     if (items.length === 0) {
         renderSourceState(
             table,
-            'No mods found',
-            SHOP_PROVIDER === 'moddb'
-                ? 'The RSS feed contains only recent ModDB downloads. Older entries may still be available in the complete catalogue.'
-                : 'Try another search or change the catalogue sort.',
+            () => t("shop_ui_no_mods_found", "No mods found"),
+            () => SHOP_PROVIDER === 'moddb'
+                ? t("shop_ui_the_rss_feed_contains_only_recent_moddb_downloads_older_entries_may_still_be_availabl", "The RSS feed contains only recent ModDB downloads. Older entries may still be available in the complete catalogue.")
+                : t("shop_ui_try_another_search_or_change_the_catalogue_sort", "Try another search or change the catalogue sort."),
             SHOP_PROVIDER === 'moddb' && result?.catalogUrl ? {
-                label: `Browse full ${providerLabel} catalogue`,
+                label: () => t('shop_full_catalogue', 'Browse the full {0} catalogue', providerLabel),
                 run: () => window.communityAPI.modSources.open({
                     provider: SHOP_PROVIDER,
                     url: result.catalogUrl
@@ -1700,6 +1788,7 @@ function renderExternalMods(table, result) {
     }
 
     for (const item of items) {
+        const itemTitle = () => providerText(item, 'title', () => t('mod', 'Mod'));
         const tr = document.createElement('tr');
         tr.dataset.canonicalIdentity = item.canonicalIdentity || `${item.provider}:${item.id}`;
         const info = document.createElement('td');
@@ -1724,40 +1813,44 @@ function renderExternalMods(table, result) {
             urlCard220: item.imageUrl,
             urlCard530: item.imageUrl
         }] : [];
-        const preview = createGalleryPreview(image, item.title, previewImages);
+        const preview = createGalleryPreview(image, itemTitle, previewImages);
 
         const card = document.createElement('div');
         card.className = 'external-source-card';
         const title = document.createElement('span');
         title.className = 'modTitleSpan';
-        title.innerText = item.title;
+        bindText(title, itemTitle);
+        title.dataset.userContent = '';
         const badge = document.createElement('span');
         badge.className = 'external-source-badge';
-        badge.innerText = externalSourceLabel(item.provider);
+        bindText(badge, () => (externalSourceLabel(item.provider)));
         const featured = document.createElement('span');
         featured.className = 'external-featured-badge';
-        featured.innerText = 'Featured';
+        bindText(featured, () => (t("shop_ui_featured", "Featured")));
         const meta = document.createElement('div');
         meta.className = 'modOtherInfoSpan calibri';
-        meta.innerText = item.updatedAt
-            ? `${item.author || `${badge.innerText} contributor`} · ${formatSourceDate(item.updatedAt)}`
-            : (item.author || `${badge.innerText} contributor`);
+        const authorDate = document.createElement('span');
+        authorDate.dataset.userContent = '';
+        const author = () => providerText(item, 'author', () => t('shop_provider_contributor', '{0} contributor', externalSourceLabel(item.provider)));
+        bindText(authorDate, () => (item.updatedAt ? `${author()} · ${formatSourceDate(item.updatedAt)}` : author()));
+        meta.append(authorDate);
         if (item.provider === 'nexus') {
             const popularity = document.createElement('span');
             popularity.className = 'external-source-popularity calibri';
-            popularity.innerText = `${Number(item.downloads || 0).toLocaleString()} downloads · ${Number(item.endorsements || 0).toLocaleString()} endorsements`;
+            bindText(popularity, () => (`${plural('shop_downloads', Number(item.downloads) || 0, '{0} downloads')} · ${plural('shop_endorsements', Number(item.endorsements) || 0, '{0} endorsements')}`));
             meta.appendChild(popularity);
         }
         const summary = document.createElement('div');
         summary.className = 'external-source-summary calibri';
-        summary.innerText = item.summary || 'No description was provided.';
+        summary.dataset.userContent = '';
+        bindText(summary, () => (item.summary || t("shop_ui_no_description_was_provided", "No description was provided.")));
         card.append(title, badge);
         if (item.featured) card.appendChild(featured);
         card.appendChild(meta);
         if (item.contentRating === 'adult') {
             const rating = document.createElement('span');
             rating.className = 'content-rating-chip';
-            rating.innerText = 'Adult content';
+            bindText(rating, () => (t("shop_ui_adult_content", "Adult content")));
             card.appendChild(rating);
         }
         card.appendChild(summary);
@@ -1768,16 +1861,18 @@ function renderExternalMods(table, result) {
         actionGroup.className = 'external-source-actions';
         const primary = document.createElement('button');
         primary.type = 'button';
-        const actionLabel = item.actionLabel || 'Open source page';
-        primary.title = actionLabel;
-        primary.setAttribute('aria-label', `${actionLabel}: ${item.title}`);
+        const actionLabel = () => item.actionLabel === 'Download' ? t('download', 'Download')
+            : item.actionLabel === 'Open download page' ? t('shop_open_download_page', 'Open download page')
+            : t("shop_ui_open_source_page", "Open source page");
+        bindText(primary, actionLabel, 'title');
+        bindText(primary, () => `${actionLabel()}: ${itemTitle()}`, 'aria-label');
         primary.innerHTML = shopIcon(item.provider === 'nexus' ? 'download' : 'open');
         const canDownload = item.provider !== 'nexus'
             || window.deltamodBackend.isCommandAvailable('modSources:downloadNexus');
         primary.disabled = !canDownload;
         if (!canDownload) {
-            primary.title = 'Direct Nexus downloads are unavailable in this app build';
-            primary.setAttribute('aria-label', `Direct Nexus download unavailable: ${item.title}`);
+            bindText(primary, () => (t("shop_ui_direct_nexus_downloads_are_unavailable_in_this_app_build", "Direct Nexus downloads are unavailable in this app build")), 'title');
+            bindText(primary, () => (t('shop_direct_unavailable_item', 'Direct Nexus download unavailable: {0}', itemTitle())), 'aria-label');
         }
         primary.onclick = () => item.provider === 'nexus'
             ? downloadNexusSource(item, primary)
@@ -1785,8 +1880,8 @@ function renderExternalMods(table, result) {
 
         const open = document.createElement('button');
         open.type = 'button';
-        open.title = 'Open source page';
-        open.setAttribute('aria-label', `Open ${item.title} on ${badge.innerText}`);
+        bindText(open, () => (t("shop_ui_open_source_page", "Open source page")), 'title');
+        bindText(open, () => (t('shop_open_source_item', 'Open {0} on {1}', itemTitle(), externalSourceLabel(item.provider))), 'aria-label');
         open.innerHTML = shopIcon('open');
         open.onclick = () => window.communityAPI.modSources.open({
             provider: item.provider,
@@ -1809,7 +1904,7 @@ async function initializeExternalSource(table) {
         syncSearchClearButton();
         const searchIndicator = document.getElementById('searchInd');
         searchIndicator.style.display = 'block';
-        searchIndicator.innerText = `Currently showing results for "${query}"`;
+        bindText(searchIndicator, () => (t('shop_search_results', 'Currently showing results for “{0}”', query)));
     }
     renderSourceLoading(table);
     try {
@@ -1821,9 +1916,8 @@ async function initializeExternalSource(table) {
         };
         const response = await requestExternalSource(request);
         if (!response?.ok) {
-            const error = new Error(
-                response?.error?.message || 'The selected mod catalogue could not be loaded.'
-            );
+            const error = localizedError(() => describeError(response?.error, t("shop_ui_the_selected_mod_catalogue_could_not_be_loaded", "The selected mod catalogue could not be loaded.")));
+            if (typeof response?.error?.messageSource === 'string') error.messageSource = response.error.messageSource;
             error.code = response?.error?.code || 'MOD_SOURCE_BROWSE_FAILED';
             if (Number.isInteger(response?.error?.status)) {
                 error.status = response.error.status;
@@ -1839,7 +1933,7 @@ async function initializeExternalSource(table) {
         if (!isCurrentShopPage()) return;
         if (isNexusRateLimited(error)) {
             setExternalSourceControlsDisabled(true);
-            renderSourceState(table, 'Nexus Mods rate limit reached', formatRateLimitMessage(error));
+            renderSourceState(table, () => t("shop_ui_nexus_mods_rate_limit_reached", "Nexus Mods rate limit reached"), () => formatRateLimitMessage(error));
             scheduleNexusRateLimitRetry(table, error);
             return;
         }
@@ -1851,18 +1945,18 @@ async function initializeExternalSource(table) {
         setExternalSourceControlsDisabled(needsNexusAuth);
         renderSourceState(
             table,
-            needsNexusAuth ? 'Sign in with Nexus Mods' : 'Catalogue unavailable',
-            needsNexusAuth
-                ? 'Connect your Nexus Mods account with OAuth in Settings before browsing this catalogue.'
-                : (error?.message || 'The selected mod catalogue could not be loaded.'),
+            () => needsNexusAuth ? t("shop_ui_sign_in_with_nexus_mods", "Sign in with Nexus Mods") : t("shop_ui_catalogue_unavailable", "Catalogue unavailable"),
+            () => needsNexusAuth
+                ? t("shop_ui_connect_your_nexus_mods_account_with_oauth_in_settings_before_browsing_this_catalogue", "Connect your Nexus Mods account with OAuth in Settings before browsing this catalogue.")
+                : describeError(error, t("shop_ui_the_selected_mod_catalogue_could_not_be_loaded", "The selected mod catalogue could not be loaded.")),
             needsNexusAuth ? {
-                label: 'Open Nexus Mods settings',
+                label: () => t("shop_ui_open_nexus_mods_settings", "Open Nexus Mods settings"),
                 run: () => {
                     window._pageArguments = { cat: 'nexus' };
                     page('options');
                 }
             } : {
-                label: 'Retry',
+                label: () => t("shop_ui_retry", "Retry"),
                 run: () => initializeExternalSource(table)
             }
         );
@@ -1916,6 +2010,7 @@ async function loadGameBananaPage(requestedPage) {
             const option = document.createElement('option');
             option.value = game.id;
             option.innerText = game.name;
+            option.dataset.userContent = '';
             gameSelect.appendChild(option);
         }
         gameSelect.value = SHOP_GAME_ID;
@@ -1940,7 +2035,7 @@ async function loadGameBananaPage(requestedPage) {
         for (const provider of availableProviders) {
             const option = document.createElement('option');
             option.value = provider.id;
-            option.innerText = provider.name;
+            bindText(option, () => provider.id === 'moddb' ? t('shop_ui_moddb_10_recent', 'ModDB (10 recent)') : provider.name);
             sourceSelect.appendChild(option);
         }
         sourceSelect.value = SHOP_PROVIDER;
@@ -1953,7 +2048,7 @@ async function loadGameBananaPage(requestedPage) {
 
     const isGameBanana = SHOP_PROVIDER === 'gamebanana';
     if (SHOP_PROVIDER === 'moddb') {
-        document.getElementById('searchInput').placeholder = 'Search recent ModDB downloads…';
+        bindText(document.getElementById('searchInput'), () => (t("shop_ui_search_recent_moddb_downloads", "Search recent ModDB downloads…")), 'placeholder');
     }
     document.getElementById('gamebananaFilterControls').hidden = !isGameBanana;
     document.getElementById('nexusSortControls').hidden = SHOP_PROVIDER !== 'nexus';
@@ -1979,7 +2074,7 @@ async function loadGameBananaPage(requestedPage) {
     }
 
     const gameID = currentShopGameBananaId();
-    if (!gameID) throw new Error('The selected game is not mapped to GameBanana.');
+    if (!gameID) throw localizedError(() => (t("shop_ui_the_selected_game_is_not_mapped_to_gamebanana", "The selected game is not mapped to GameBanana.")));
     let GB_API = 'https://gamebanana.com/apiv11/Game/' + gameID + '/Subfeed?_sSort=default&_nPage=$PAGE';
     const contentRatingFilter = document.getElementById('contentRatingFilter');
     contentRatingFilter.value = currentContentFilter();
@@ -2009,7 +2104,7 @@ async function loadGameBananaPage(requestedPage) {
 
         let searchInd = document.getElementById('searchInd');
         searchInd.style.display = 'block';
-        searchInd.innerText = `Currently showing results for "${csearch}"`;
+        bindText(searchInd, () => (t('shop_search_results', 'Currently showing results for “{0}”', csearch)));
     }
 
     capi = GB_API;
@@ -2039,9 +2134,9 @@ async function loadGameBananaPage(requestedPage) {
             gameSelect.disabled = false;
             renderSourceState(
                 table,
-                'Mod Shop could not be loaded',
-                error?.message || 'The Mod Shop failed to initialize.',
-                { label: 'Retry', run: () => {
+                () => t("shop_ui_mod_shop_could_not_be_loaded", "Mod Shop could not be loaded"),
+                () => describeError(error, t("shop_ui_the_mod_shop_failed_to_initialize", "The Mod Shop failed to initialize.")),
+                { label: () => t("shop_ui_retry", "Retry"), run: () => {
                     window._pageArguments = preserveShopArguments();
                     page('gamebanana-browse');
                 } }
@@ -2117,6 +2212,7 @@ function scheduleSuggestions() {
                 result.setAttribute('role', 'option');
                 result.setAttribute('aria-selected', 'false');
                 result.textContent = item;
+                result.dataset.userContent = '';
                 // Keep focus in the combobox until its click is handled.
                 result.addEventListener('mousedown', event => event.preventDefault());
                 result.addEventListener('click', () => {

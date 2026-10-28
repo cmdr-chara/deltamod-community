@@ -146,7 +146,12 @@ Always check the mod author's compatibility notes. A supported game does not mea
   <img src="./docs/assets/readme/deltamod-personalization.gif" width="960" alt="Selecting a Deltamod theme and changing the interface language">
 </p>
 
-Deltamod Community includes community themes and eight interface languages.
+Deltamod Community includes community themes and 17 interface languages:
+English, Italian, Polish, Spanish, French, German, Brazilian Portuguese,
+Japanese, Russian, Simplified Chinese, Traditional Chinese, Korean, Turkish,
+Latin American Spanish, Ukrainian, Thai, and Arabic. Language changes apply
+without restarting, with regional date and number formatting and right-to-left
+layout for Arabic. See the [localization guide](./docs/LOCALIZATION.md).
 
 </details>
 

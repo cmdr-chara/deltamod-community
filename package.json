@@ -14,6 +14,7 @@
     "dev": "node scripts/tauri-command.js dev",
     "predev": "npm run build:tauri:prepare",
     "preview:heart": "vite --host 127.0.0.1 --open /tools/heart-preview/",
+    "verify:localization": "node scripts/check-localization.js",
     "verify:secure-updater": "node scripts/verify-secure-updater-config.js --self-test && node scripts/verify-secure-updater-config.js",
     "test": "npm run verify:tauri-only && npm run verify:secure-updater && npm run test:audit && vitest run",
     "test:audit": "node --test scripts/tauri-parity/test/audit-contract.test.js scripts/tauri-parity/test/audit-updater.test.js scripts/verify-rustls-lock.test.cjs",

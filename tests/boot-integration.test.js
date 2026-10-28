@@ -41,10 +41,10 @@ describe('Deltamod boot screen integration', () => {
         const bootEntry = fs.readFileSync(path.join(projectRoot, 'web', 'boot-entry.tsx'), 'utf8');
         const bootScreen = fs.readFileSync(path.join(projectRoot, 'web', 'components', 'DeltamodBootScreen.tsx'), 'utf8');
         expect(renderer).toContain('window.DeltamodBoot?.setTheme');
-        expect(renderer).toContain("bootProgress(0.03, 'Starting local runtime')");
-        expect(renderer).toContain("bootProgress(0.9, 'Preparing file overlay')");
+        expect(renderer).toMatch(/bootProgress\(0\.03, shellText\(["']Starting local runtime["']\)\)/);
+        expect(renderer).toMatch(/bootProgress\(0\.9, shellText\(["']Preparing file overlay["']\)\)/);
         expect(renderer).toContain('finishBoot();');
-        expect(renderer).toContain("window.DeltamodBoot?.fail('Continuing')");
+        expect(renderer).toMatch(/window\.DeltamodBoot\?\.fail\(shellText\(["']Continuing["']\)\)/);
         expect(renderer).toContain("window.deltamodBackend.invoke('isCMode', [])");
         expect(renderer).toContain("invokeOptional('shouldGoIM', [], false)");
         expect(renderer).toContain("invokeOptional('executeArgumentCmd', [], null)");

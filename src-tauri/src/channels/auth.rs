@@ -108,7 +108,7 @@ async fn start_login(app: &AppHandle) -> Result<Value, String> {
     let blank = Url::parse("about:blank").map_err(|_| error::internal())?;
 
     let window = WebviewWindowBuilder::new(app, LOGIN_WINDOW_LABEL, WebviewUrl::External(blank))
-        .title("Sign in to GameBanana")
+        .title(crate::localization::text("Sign in to GameBanana"))
         .inner_size(800.0, 600.0)
         .resizable(false)
         .minimizable(false)

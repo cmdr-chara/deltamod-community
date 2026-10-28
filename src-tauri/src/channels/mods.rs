@@ -215,8 +215,60 @@ fn unix_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+fn annotate_legacy_catalog_copy(result: &mut Value) {
+    let Some(object) = result.as_object_mut() else {
+        return;
+    };
+    // These catalog shapes and fields were emitted as fixed app-owned copy by
+    // the previous generator. Do not infer ownership from Nexus titles/authors:
+    // an actual provider name can equal an old generated fallback.
+    let legacy_moddb = object.get("provider").and_then(Value::as_str) == Some("moddb")
+        && object.get("catalogScope").and_then(Value::as_str) == Some("recent-rss")
+        && object.get("feedLimit").and_then(Value::as_u64) == Some(10)
+        && object.get("attribution").and_then(Value::as_str)
+            == Some("ModDB RSS exposes only its 10 most recent downloads");
+    let legacy_nexus = object.get("provider").and_then(Value::as_str) == Some("nexus")
+        && object.get("catalogScope").and_then(Value::as_str) == Some("page")
+        && object.get("attribution").and_then(Value::as_str)
+            == Some("Metadata and popularity counts provided by Nexus Mods");
+    if !object.contains_key("attributionSource") && !object.contains_key("attributionSourceArgs") {
+        if legacy_moddb {
+            object.insert(
+                "attributionSource".into(),
+                json!("ModDB RSS exposes only its {0} most recent downloads"),
+            );
+            object.insert("attributionSourceArgs".into(), json!([10]));
+        } else if legacy_nexus {
+            object.insert(
+                "attributionSource".into(),
+                json!("Metadata and popularity counts provided by Nexus Mods"),
+            );
+            object.insert("attributionSourceArgs".into(), json!([]));
+        }
+    }
+    if !legacy_moddb {
+        return;
+    }
+    let Some(items) = object.get_mut("items").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in items.iter_mut().filter_map(Value::as_object_mut) {
+        if item.get("provider").and_then(Value::as_str) == Some("moddb")
+            && item.get("author").and_then(Value::as_str) == Some("ModDB contributor")
+            && !item.contains_key("authorSource")
+            && !item.contains_key("authorSourceArgs")
+        {
+            item.insert("authorSource".into(), json!("{0} contributor"));
+            item.insert("authorSourceArgs".into(), json!(["ModDB"]));
+        }
+    }
+}
+
 fn cached_result(result: Value, cached: bool, stale: bool, stored_at_ms: Option<u64>) -> Value {
     let mut result = result;
+    if cached {
+        annotate_legacy_catalog_copy(&mut result);
+    }
     if let Some(object) = result.as_object_mut() {
         object.insert("cached".into(), Value::Bool(cached));
         object.insert("stale".into(), Value::Bool(stale));
@@ -231,15 +283,23 @@ fn normalized_provider_error(provider: KnownProvider, kind: ProviderFailureKind)
     let contract =
         normalize_provider_error(ProviderErrorInput::new(provider, kind)).into_contract();
     let payload = contract.into_payload();
+    let message_source = match kind {
+        ProviderFailureKind::Offline => {
+            "The provider is offline. Cached results are unavailable for this request."
+        }
+        ProviderFailureKind::AuthenticationRequired => {
+            "Connect this provider account before browsing its catalogue."
+        }
+        ProviderFailureKind::RateLimited => {
+            "The provider rate limit was reached. Try again after the reported wait period."
+        }
+        _ => "The provider catalogue is temporarily unavailable.",
+    };
     json!({
         "code": payload.code.as_str(),
         "messageKey": payload.message_key,
-        "message": match kind {
-            ProviderFailureKind::Offline => "The provider is offline. Cached results are unavailable for this request.",
-            ProviderFailureKind::AuthenticationRequired => "Connect this provider account before browsing its catalogue.",
-            ProviderFailureKind::RateLimited => "The provider rate limit was reached. Try again after the reported wait period.",
-            _ => "The provider catalogue is temporarily unavailable.",
-        },
+        "message": crate::localization::text(message_source),
+        "messageSource": message_source,
         "retryable": payload.retryable,
         "recoveryAction": payload.recovery_action,
     })
@@ -353,7 +413,9 @@ fn moddb_catalog(slug: &str, entries: Vec<ModEntry>, query: Option<&str>) -> Val
                 "canonicalIdentity": canonical_identity,
                 "title": entry.title,
                 "summary": entry.summary.unwrap_or_default(),
-                "author": "ModDB contributor",
+                "author": crate::localization::format("{0} contributor", &["ModDB"]),
+                "authorSource": "{0} contributor",
+                "authorSourceArgs": ["ModDB"],
                 "updatedAt": entry.published.unwrap_or_default(),
                 "imageUrl": entry.image_url,
                 "sourceUrl": entry.link,
@@ -368,7 +430,9 @@ fn moddb_catalog(slug: &str, entries: Vec<ModEntry>, query: Option<&str>) -> Val
         "catalogScope": "recent-rss",
         "feedLimit": 10,
         "hasMore": false,
-        "attribution": "ModDB RSS exposes only its 10 most recent downloads",
+        "attribution": crate::localization::format("ModDB RSS exposes only its {0} most recent downloads", &["10"]),
+        "attributionSource": "ModDB RSS exposes only its {0} most recent downloads",
+        "attributionSourceArgs": [10],
         "catalogUrl": format!("https://www.moddb.com/games/{slug}/downloads"),
         "items": items
     })
@@ -454,13 +518,18 @@ fn nexus_catalog(
                 .get("pictureUrl")
                 .and_then(Value::as_str)
                 .filter(|url| validate_https_url(Provider::Nexus, url).is_ok());
+            let title = node.get("name").and_then(Value::as_str);
+            let author = node.get("author").and_then(Value::as_str);
             Some(json!({
                 "provider": "nexus",
                 "id": mod_id.to_string(),
                 "canonicalIdentity": format!("nexus:{domain}:{mod_id}"),
-                "title": node.get("name").and_then(Value::as_str).unwrap_or("Nexus mod"),
+                "title": title.map(str::to_owned).unwrap_or_else(|| crate::localization::text("Mod")),
+                "titleSource": title.is_none().then_some("Mod"),
                 "summary": node.get("summary").and_then(Value::as_str).unwrap_or_default(),
-                "author": node.get("author").and_then(Value::as_str).unwrap_or("Nexus Mods contributor"),
+                "author": author.map(str::to_owned).unwrap_or_else(|| crate::localization::format("{0} contributor", &["Nexus Mods"])),
+                "authorSource": author.is_none().then_some("{0} contributor"),
+                "authorSourceArgs": if author.is_none() { json!(["Nexus Mods"]) } else { Value::Null },
                 "updatedAt": node.get("updatedAt").and_then(Value::as_str).unwrap_or_default(),
                 "imageUrl": picture_url,
                 "sourceUrl": format!("https://www.nexusmods.com/{domain}/mods/{mod_id}"),
@@ -488,7 +557,9 @@ fn nexus_catalog(
         "catalogScope": "page",
         "hasMore": has_more,
         "totalCount": total_count,
-        "attribution": "Metadata and popularity counts provided by Nexus Mods",
+        "attribution": crate::localization::text("Metadata and popularity counts provided by Nexus Mods"),
+        "attributionSource": "Metadata and popularity counts provided by Nexus Mods",
+        "attributionSourceArgs": [],
         "items": items
     }))
 }
@@ -706,7 +777,8 @@ pub fn dispatch(
                     "configured": true,
                     "connected": true,
                     "valid": true,
-                    "name": user.name.unwrap_or_else(|| "Nexus Mods user".to_owned()),
+                    "nameFallback": user.name.is_none(),
+                    "name": user.name.unwrap_or_else(|| crate::localization::text("Nexus Mods user")),
                     "userId": user.user_id,
                     "premium": user.is_premium.unwrap_or(false),
                     "supporter": user.is_supporter.unwrap_or(false)
@@ -719,7 +791,8 @@ pub fn dispatch(
                     "configured": nexus_oauth::has_tokens(state),
                     "connected": false,
                     "code": failure.code,
-                    "error": failure.message,
+                    "error": crate::localization::text(failure.message),
+                    "errorSource": failure.message,
                     "status": failure.status
                 }))),
             }
@@ -774,8 +847,88 @@ pub fn dispatch(
 
 #[cfg(test)]
 mod tests {
-    use super::{gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog};
+    use super::{
+        cached_result, gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog,
+        normalized_provider_error,
+    };
     use deltamod_network_runtime::ModEntry;
+    use deltamod_provider_platform::{KnownProvider, ProviderFailureKind};
+
+    #[test]
+    fn legacy_cached_copy_gains_only_proven_owned_metadata() {
+        let old_moddb = serde_json::json!({
+            "provider": "moddb", "catalogScope": "recent-rss", "feedLimit": 10,
+            "attribution": "ModDB RSS exposes only its 10 most recent downloads",
+            "items": [
+                {"provider": "moddb", "title": "ModDB contributor", "author": "ModDB contributor", "summary": "Literal description"},
+                {"provider": "moddb", "title": "A real title", "author": "A real author"},
+                {"provider": "nexus", "title": "Nexus mod", "author": "Nexus Mods contributor"}
+            ]
+        });
+        let migrated = cached_result(old_moddb.clone(), true, true, Some(42));
+        assert_eq!(migrated["attribution"], old_moddb["attribution"]);
+        assert_eq!(migrated["attributionSourceArgs"], serde_json::json!([10]));
+        assert_eq!(migrated["items"][0]["title"], "ModDB contributor");
+        assert!(migrated["items"][0]["titleSource"].is_null());
+        assert_eq!(migrated["items"][0]["author"], "ModDB contributor");
+        assert_eq!(migrated["items"][0]["authorSource"], "{0} contributor");
+        assert_eq!(migrated["items"][0]["summary"], "Literal description");
+        assert_eq!(migrated["items"][1], old_moddb["items"][1]);
+        assert_eq!(migrated["items"][2], old_moddb["items"][2]);
+        assert_eq!(migrated["cached"], true);
+        assert_eq!(migrated["stale"], true);
+        assert_eq!(migrated["cachedAtMs"], 42);
+
+        let old_nexus = serde_json::json!({
+            "provider": "nexus", "catalogScope": "page",
+            "attribution": "Metadata and popularity counts provided by Nexus Mods",
+            "items": [{"provider": "nexus", "title": "Nexus mod", "author": "Nexus Mods contributor"}]
+        });
+        let migrated = cached_result(old_nexus.clone(), true, false, None);
+        assert_eq!(migrated["attributionSource"], old_nexus["attribution"]);
+        assert_eq!(migrated["attributionSourceArgs"], serde_json::json!([]));
+        assert_eq!(migrated["items"], old_nexus["items"]);
+
+        let mut explicit = old_moddb.clone();
+        explicit["attributionSource"] = serde_json::json!("Existing source");
+        explicit["attributionSourceArgs"] = serde_json::json!(["Existing argument"]);
+        explicit["items"][0]["authorSource"] = serde_json::Value::Null;
+        explicit["items"][0]["authorSourceArgs"] = serde_json::json!([]);
+        let preserved = cached_result(explicit.clone(), true, false, None);
+        assert_eq!(
+            preserved["attributionSource"],
+            explicit["attributionSource"]
+        );
+        assert_eq!(
+            preserved["attributionSourceArgs"],
+            explicit["attributionSourceArgs"]
+        );
+        assert_eq!(preserved["items"], explicit["items"]);
+
+        let mut unrelated = old_moddb;
+        unrelated["attribution"] = serde_json::json!("Provider-supplied attribution");
+        let preserved = cached_result(unrelated.clone(), true, false, None);
+        assert!(preserved["attributionSource"].is_null());
+        assert_eq!(preserved["items"], unrelated["items"]);
+    }
+
+    #[test]
+    fn owned_provider_errors_keep_typed_recovery_fields_and_translation_sources() {
+        for kind in [
+            ProviderFailureKind::Offline,
+            ProviderFailureKind::AuthenticationRequired,
+            ProviderFailureKind::RateLimited,
+            ProviderFailureKind::Http,
+        ] {
+            let result = normalized_provider_error(KnownProvider::Nexus, kind);
+            let source = result["messageSource"].as_str().unwrap();
+            assert_eq!(result["message"], crate::localization::text(source));
+            assert!(result["code"].as_str().is_some_and(|code| !code.is_empty()));
+            assert!(result["messageKey"].is_string());
+            assert!(result["retryable"].is_boolean());
+            assert!(result["recoveryAction"].is_string());
+        }
+    }
 
     #[test]
     fn gamebanana_profile_pages_are_allowed_natively() {
@@ -830,16 +983,29 @@ mod tests {
         let result = moddb_catalog(
             "undertale",
             vec![ModEntry {
-                title: "A recent mod".into(),
+                title: "Mod".into(),
                 link: "https://www.moddb.com/mods/example/downloads/release".into(),
                 published: Some("Mon, 10 Aug 2026 12:00:00 +0000".into()),
-                summary: Some("Description".into()),
+                summary: Some("Custom theme".into()),
                 image_url: Some("https://media.moddb.com/example.png".into()),
             }],
             None,
         );
         assert_eq!(result["items"].as_array().map(Vec::len), Some(1));
         assert_eq!(result["items"][0]["provider"], "moddb");
+        assert_eq!(result["items"][0]["title"], "Mod");
+        assert!(result["items"][0]["titleSource"].is_null());
+        assert_eq!(result["items"][0]["summary"], "Custom theme");
+        assert_eq!(result["items"][0]["authorSource"], "{0} contributor");
+        assert_eq!(
+            result["items"][0]["authorSourceArgs"],
+            serde_json::json!(["ModDB"])
+        );
+        assert_eq!(result["attributionSourceArgs"], serde_json::json!([10]));
+        assert_eq!(
+            result["attributionSource"],
+            "ModDB RSS exposes only its {0} most recent downloads"
+        );
         assert_eq!(
             result["items"][0]["sourceUrl"],
             "https://www.moddb.com/mods/example/downloads/release"

@@ -45,8 +45,26 @@
         ?? String(fallback).replace(/{(\d+)}/g, (match, index) => (
             args[index] === undefined ? match : String(args[index])
         ));
+    const uiText = (source, ...args) => window.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = value => window.Localization?.number?.(value) ?? String(value);
+    const searchText = value => String(value ?? '').normalize('NFKC')
+        .toLocaleLowerCase(window.Localization?.getLocale?.());
+    const themeSearchText = theme => searchText([
+        theme.name,
+        theme.descriptionSource ? uiText(theme.descriptionSource) : theme.description,
+        theme.musicTrackSource ? uiText(theme.musicTrackSource) : theme.musicTrack,
+        ...(Array.isArray(theme.credits) ? theme.credits.flatMap(credit => [credit.role, credit.name]) : []),
+        theme.builtIn ? t('theme_built_in', 'Built-in') : t('theme_custom', 'Custom')
+    ].join(' '));
+    const uiRender = (element, render, attribute) => {
+        if (window.Localization?.bindComputed) return window.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
     const themeFilterPlaceholder = () => charaEncounterActive
-        ? 'THE TRUE NAME'
+        ? uiText('THE TRUE NAME')
         : t('theme_filter_placeholder', 'Name, description, or music');
     const refreshThemeFilterPlaceholder = () => {
         const filter = document.getElementById('theme-filter');
@@ -187,7 +205,7 @@
             const bExpired = b.timed && Date.now() > b.timedExpire;
             if (!aExpired && bExpired) return -1;
             if (aExpired && !bExpired) return 1;
-            return a.name.localeCompare(b.name);
+            return a.name.localeCompare(b.name, window.Localization?.getLocale?.());
         });
         let selectedTheme = currentTheme;
         const themeGrid = document.getElementById('themes');
@@ -208,15 +226,7 @@
             card.dataset.category = theme.builtIn
                 ? (UNDERTALE_THEME_IDS.has(theme.id) ? 'undertale' : 'deltarune')
                 : 'custom';
-            card.dataset.search = [
-                theme.name,
-                theme.description,
-                theme.musicTrack,
-                ...(Array.isArray(theme.credits)
-                    ? theme.credits.flatMap(credit => [credit.role, credit.name])
-                    : []),
-                theme.builtIn ? 'built-in' : 'custom'
-            ].join(' ').toLocaleLowerCase();
+            card.dataset.search = themeSearchText(theme);
             if (theme.id === selectedTheme) card.classList.add('is-current');
 
             const preview = document.createElement('div');
@@ -254,14 +264,18 @@
 
             const description = document.createElement('p');
             description.className = 'theme-description';
-            description.textContent = theme.description;
+            // A generated description is a placeholder, never editable saved
+            // content. Locale changes therefore cannot overwrite a draft.
+            description.textContent = theme.descriptionSource ? '' : theme.description;
+            description.dataset.userContent = '';
             content.appendChild(description);
 
             const music = document.createElement('div');
             music.className = 'theme-music';
             music.appendChild(staticIcon('audio_file', '18px'));
             const musicName = document.createElement('span');
-            musicName.textContent = theme.musicTrack;
+            if (theme.musicTrackSource) uiRender(musicName, () => uiText(theme.musicTrackSource));
+            else musicName.textContent = theme.musicTrack;
             music.appendChild(musicName);
             content.appendChild(music);
 
@@ -303,17 +317,31 @@
                 description.classList.add('is-editable');
                 name.title = t('theme_edit_name', 'Click to edit the theme name');
                 description.title = t('theme_edit_description', 'Click to edit the description');
+                description.dataset.placeholder = uiText('Custom theme');
+                description.setAttribute('aria-placeholder', uiText('Custom theme'));
 
                 const saveDetails = async () => {
                     if (!name.textContent.trim()) name.textContent = theme.name;
-                    if (!description.textContent.trim()) {
+                    if (!description.textContent.trim() && !theme.descriptionSource) {
                         description.textContent = theme.description;
                     }
+                    const nextName = name.textContent.trim();
+                    const nextDescription = description.textContent.trim();
+                    const storedDescription = theme.descriptionSource ? '' : String(theme.description || '');
+                    if (nextName === theme.name && nextDescription === storedDescription) return;
                     await window.deltamodBackend.invoke('renameCustomTheme', [
                         theme.id,
-                        name.textContent.trim(),
-                        description.textContent.trim()
+                        nextName,
+                        nextDescription
                     ]);
+                    theme.name = nextName;
+                    theme.description = nextDescription;
+                    theme.descriptionSource = nextDescription ? null : 'Custom theme';
+                    // Clear an empty browser-inserted <br>, but keep any edit
+                    // made while the asynchronous save was in flight.
+                    if (!nextDescription && !description.textContent.trim()) description.replaceChildren();
+                    card.dataset.search = themeSearchText(theme);
+                    updateFilter();
                 };
                 name.addEventListener('blur', saveDetails);
                 description.addEventListener('blur', saveDetails);
@@ -353,8 +381,8 @@
                 const replayButton = document.createElement('button');
                 replayButton.type = 'button';
                 replayButton.className = 'theme-replay-event secondary-action noScaleBTN';
-                replayButton.textContent = t('theme_replay_event', 'Replay awakening');
-                replayButton.title = t('theme_knight_cue', 'The awakening normally begins after 26 seconds.');
+                uiRender(replayButton, () => t('theme_replay_event', 'Replay awakening'));
+                uiRender(replayButton, () => t('theme_knight_cue', 'The awakening normally begins after 26 seconds.'), 'title');
                 replayButton.hidden = theme.id !== selectedTheme;
                 replayButton.addEventListener('click', () => replayRoaringKnightTransition());
                 actions.appendChild(replayButton);
@@ -390,7 +418,7 @@
         }
 
         const updateFilter = () => {
-            const query = filterInput.value.trim().toLocaleLowerCase();
+            const query = searchText(filterInput.value.trim());
             let visible = 0;
             for (const card of themeCards) {
                 const matchesQuery = !query || card.dataset.search.includes(query);
@@ -403,8 +431,8 @@
             countLabel.textContent = t(
                 'theme_count',
                 '{0} of {1} themes',
-                visible,
-                themeCards.length
+                uiNumber(visible),
+                uiNumber(themeCards.length)
             );
             emptyState.hidden = visible !== 0;
         };
@@ -455,6 +483,8 @@
                 const editableDescription = card.querySelector('.theme-description.is-editable');
                 if (editableName) editableName.title = t('theme_edit_name', 'Click to edit the theme name');
                 if (editableDescription) {
+                    editableDescription.dataset.placeholder = uiText('Custom theme');
+                    editableDescription.setAttribute('aria-placeholder', uiText('Custom theme'));
                     editableDescription.title = t(
                         'theme_edit_description',
                         'Click to edit the description'
@@ -466,6 +496,7 @@
                     : t('theme_use', 'Use theme');
                 const deleteLabel = card.querySelector('.theme-delete-button span:last-child');
                 if (deleteLabel) deleteLabel.textContent = t('theme_delete', 'Delete');
+                card.dataset.search = themeSearchText(theme);
             }
             updateFilter();
         };
@@ -504,7 +535,7 @@
         const closeImportForm = () => {
             importForm.hidden = true;
             openImportButton.hidden = false;
-            importStatus.textContent = '';
+            uiRender(importStatus, () => '');
         };
 
         openImportButton.addEventListener('click', () => {
@@ -520,19 +551,20 @@
             event.preventDefault();
             const name = importName.value.trim();
             if (!name) {
-                importStatus.textContent = t('theme_name_required', 'Enter a name for the theme.');
+                uiRender(importStatus, () => t('theme_name_required', 'Enter a name for the theme.'));
                 importName.focus();
                 return;
             }
 
             createThemeButton.disabled = true;
             cancelImportButton.disabled = true;
-            importStatus.textContent = includeMusic.checked
+            const importingMusic = includeMusic.checked;
+            uiRender(importStatus, () => importingMusic
                 ? t(
                     'theme_choose_background_music',
                     'Choose a background image, then choose the music file.'
                 )
-                : t('theme_choose_background', 'Choose a background image.');
+                : t('theme_choose_background', 'Choose a background image.'));
 
             try {
                 const accent = window.ThemeSprites.parseThemeColor(importColor.value) || [205, 68, 81];
@@ -544,19 +576,19 @@
                     soulColor: colorToHex(window.ThemeSprites.canonicalSoulColor(accent))
                 }]);
                 if (!result?.created) {
-                    importStatus.textContent = t(
+                    uiRender(importStatus, () => t(
                         'theme_import_canceled',
                         'Import canceled. No theme files were copied.'
-                    );
+                    ));
                     return;
                 }
                 await page('themesel');
             } catch (error) {
-                importStatus.textContent = t(
+                uiRender(importStatus, () => t(
                     'theme_import_failed',
                     'Theme import failed: {0}',
                     error.message || t('theme_unknown_error', 'Unknown error')
-                );
+                ));
             } finally {
                 createThemeButton.disabled = false;
                 cancelImportButton.disabled = false;
@@ -634,7 +666,7 @@
         overlay.tabIndex = -1;
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
-        overlay.setAttribute('aria-label', 'A hidden encounter');
+        uiRender(overlay, () => uiText('A hidden encounter'), 'aria-label');
         overlay.dataset.phase = 'dialogue';
         overlay.dataset.reducedMotion = String(prefersReducedMotion);
 
@@ -659,10 +691,10 @@
 
         const choices = createElement('div', 'chara-choices');
         choices.hidden = true;
-        choices.setAttribute('aria-label', 'Choose an answer');
-        const proceedButton = createElement('button', 'chara-choice', 'PROCEED');
+        uiRender(choices, () => uiText('Choose an answer'), 'aria-label');
+        const proceedButton = uiRender(createElement('button', 'chara-choice'), () => uiText('PROCEED'));
         proceedButton.type = 'button';
-        const goBackButton = createElement('button', 'chara-choice', 'GO BACK');
+        const goBackButton = uiRender(createElement('button', 'chara-choice'), () => uiText('GO BACK'));
         goBackButton.type = 'button';
         choices.append(proceedButton, goBackButton);
         stage.append(portraitFrame, dialogue, choices);
@@ -698,6 +730,8 @@
         let dialogueIndex = 0;
         let typingTimer = null;
         let typingText = '';
+        let typingSource = '';
+        let typingCharacters = [];
         let typingPosition = 0;
         let afterTyping = null;
         let laughFrameTimer = null;
@@ -758,6 +792,7 @@
             if (disposed) return;
             disposed = true;
             clearInterval(typingTimer);
+            window.removeEventListener('deltamod-language-change', refreshEncounterLanguage);
             clearInterval(laughFrameTimer);
             timeouts.forEach(clearTimeout);
             timeouts.clear();
@@ -811,7 +846,9 @@
 
         const typeLine = (text, onComplete = null) => {
             clearInterval(typingTimer);
-            typingText = text;
+            typingSource = text;
+            typingText = uiText(text);
+            typingCharacters = Array.from(typingText);
             typingPosition = 0;
             afterTyping = onComplete;
             dialogueText.textContent = '';
@@ -823,17 +860,29 @@
             }
             typingTimer = setInterval(() => {
                 typingPosition += 1;
-                dialogueText.textContent = typingText.slice(0, typingPosition);
-                if (typingPosition >= typingText.length) finishTyping();
+                dialogueText.textContent = typingCharacters.slice(0, typingPosition).join('');
+                if (typingPosition >= typingCharacters.length) finishTyping();
             }, 38);
         };
+
+        // Keep the encounter phase, typed progress, focus and scheduled actions intact.
+        const refreshEncounterLanguage = () => {
+            const ratio = typingTimer ? typingPosition / Math.max(1, typingCharacters.length) : 1;
+            typingText = uiText(typingSource);
+            typingCharacters = Array.from(typingText);
+            typingPosition = Math.min(typingCharacters.length, Math.floor(ratio * typingCharacters.length));
+            dialogueText.textContent = typingCharacters.slice(0, typingPosition).join('');
+            if (phase === 'choice') dialogueAnnouncer.textContent = uiText('Choose an answer.');
+            else if (!typingTimer) dialogueAnnouncer.textContent = typingText;
+        };
+        window.addEventListener('deltamod-language-change', refreshEncounterLanguage);
 
         const showChoices = () => {
             phase = 'choice';
             overlay.dataset.phase = phase;
             choices.hidden = false;
             continueIndicator.classList.remove('is-ready');
-            dialogueAnnouncer.textContent = 'Choose an answer.';
+            dialogueAnnouncer.textContent = uiText('Choose an answer.');
             proceedButton.focus();
         };
 

@@ -37,3 +37,5 @@ mod import_download;
 fn production_channel_boundary_compiles_against_runtime_apis() {
     assert!(std::mem::size_of::<state::AppState>() > 0);
 }
+#[path = "../../../src/localization.rs"]
+mod localization;

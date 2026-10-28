@@ -17,7 +17,7 @@ $specs = @(
     [pscustomobject]@{ Id='card-castle'; Scene='card-castle'; Name='Card Castle'; Work='DELTARUNE'; Music='mus/card_castle.ogg'; Track='Card Castle'; Description='A theme based on Card Castle from DELTARUNE.'; Color='rgb(101, 84, 192)'; Soul='#FF0000' },
     [pscustomobject]@{ Id='noelle'; Scene='noelle'; Name='Noelle'; Work='DELTARUNE'; Music='mus/noelle.ogg'; Track='Noelle'; Description='A theme based on Noelle from DELTARUNE.'; Color='rgb(42, 116, 148)'; Soul='#42FCFF' },
     [pscustomobject]@{ Id='tv-world'; Scene='tv-world'; Name='TV World'; Work='DELTARUNE'; Music='mus/tv_world.ogg'; Track='TV World'; Description='A theme based on TV World from DELTARUNE.'; Color='rgb(164, 48, 145)'; Soul='#D535D9' },
-    [pscustomobject]@{ Id='the-knight'; Scene='the-knight'; Name='The Roaring Knight'; Work='DELTARUNE'; Music='mus/knight.ogg'; Track='The Roaring Knight'; Description='An animated theme based on the Roaring Knight from DELTARUNE.'; Color='rgb(87, 82, 151)'; Soul='#FF0000'; Video='the-knight.mp4' },
+    [pscustomobject]@{ Id='the-knight'; Scene='the-knight'; Name='The Roaring Knight'; Work='DELTARUNE'; Music='mus/knight.ogg'; Track='The Roaring Knight'; Description='An animated theme based on the Roaring Knight from DELTARUNE.'; Color='rgb(87, 82, 151)'; Soul='#FF0000'; Video='the-knight.webm'; VideoSource='the-knight.mp4' },
     [pscustomobject]@{ Id='undertale-ruins'; Scene='undertale-ruins'; Name='Ruins'; Work='UNDERTALE'; Music='mus_ruins.ogg'; Track='Ruins'; Description='A theme based on the Ruins from UNDERTALE.'; Color='rgb(121, 80, 165)'; Soul='#FF0000' },
     [pscustomobject]@{ Id='undertale-snowdin'; Scene='undertale-snowdin'; Name='Snowdin'; Work='UNDERTALE'; Music='mus_snowy.ogg'; Track='Snowy'; Description='A theme based on Snowdin from UNDERTALE.'; Color='rgb(50, 118, 158)'; Soul='#003CFF' },
     [pscustomobject]@{ Id='undertale-waterfall'; Scene='undertale-waterfall'; Name='Waterfall'; Work='UNDERTALE'; Music='mus_waterfall.ogg'; Track='Waterfall'; Description='A theme based on Waterfall from UNDERTALE.'; Color='rgb(56, 97, 199)'; Soul='#42FCFF' },
@@ -442,7 +442,10 @@ function Write-ThemeBackground {
 }
 
 function Write-RoaringKnightAnimation {
-    param([Parameter(Mandatory)] [string] $Destination)
+    param(
+        [Parameter(Mandatory)] [string] $Destination,
+        [Parameter(Mandatory)] [string] $SourceDestination
+    )
 
     $ffmpeg = Get-Command ffmpeg -CommandType Application -ErrorAction Stop
     $frameDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("deltamod-roaring-knight-" + [guid]::NewGuid().ToString('N'))
@@ -477,7 +480,15 @@ function Write-RoaringKnightAnimation {
             }
         }
 
-        & $ffmpeg.Source -hide_banner -loglevel error -y -framerate 24 -i (Join-Path $frameDirectory 'frame-%03d.png') -c:v libx264 -preset slow -crf 12 -g 24 -keyint_min 24 -sc_threshold 0 -bf 0 -pix_fmt yuv420p -movflags '+faststart' -an $Destination
+        & $ffmpeg.Source -hide_banner -loglevel error -y -framerate 24 -i (Join-Path $frameDirectory 'frame-%03d.png') -c:v libx264 -preset slow -crf 12 -g 24 -keyint_min 24 -sc_threshold 0 -bf 0 -pix_fmt yuv420p -movflags '+faststart' -an $SourceDestination
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $SourceDestination -PathType Leaf)) {
+            throw "Failed to encode Roaring Knight forward source: ffmpeg exit $LASTEXITCODE"
+        }
+
+        # The 144 procedural frames already form a periodic six-second cycle.
+        # Preserve their forward order in the portable VP8 asset; adding a
+        # reversed tail makes the runes visibly change direction every six seconds.
+        & $ffmpeg.Source -hide_banner -loglevel error -y -i $SourceDestination -map 0:v:0 -vf 'fps=24' -c:v libvpx -b:v 4M -crf 4 -qmin 0 -qmax 4 -deadline good -cpu-used 2 -g 24 -auto-alt-ref 0 -pix_fmt yuv420p -an $Destination
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Destination -PathType Leaf)) {
             throw "Failed to encode Roaring Knight background video: ffmpeg exit $LASTEXITCODE"
         }
@@ -510,7 +521,8 @@ foreach ($spec in $specs) {
     $videoOutput = $null
     if ($spec.Video) {
         $videoOutput = Join-Path $videoDirectory $spec.Video
-        Write-RoaringKnightAnimation -Destination $videoOutput
+        $videoSourceOutput = Join-Path $videoDirectory $spec.VideoSource
+        Write-RoaringKnightAnimation -Destination $videoOutput -SourceDestination $videoSourceOutput
     }
 
     $manifest = [ordered]@{
@@ -551,6 +563,8 @@ foreach ($spec in $specs) {
     if ($videoOutput) {
         $themeProvenance.backgroundVideo = $spec.Video
         $themeProvenance.backgroundVideoSha256 = (Get-FileHash -LiteralPath $videoOutput -Algorithm SHA256).Hash.ToLowerInvariant()
+        $themeProvenance.backgroundVideoSource = $spec.VideoSource
+        $themeProvenance.backgroundVideoSourceSha256 = (Get-FileHash -LiteralPath $videoSourceOutput -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     $provenance += $themeProvenance
     Write-Host "Generated bundled theme $($spec.Id)"

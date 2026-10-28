@@ -4,6 +4,20 @@
 (() => {
     'use strict';
 
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
+
     const PRODUCT_UI_SCRIPT = './modules/product-ui.js';
     const PRODUCT_UI_STYLES = './modules/product-ui.css';
 
@@ -283,11 +297,11 @@
         panel.setAttribute('role', 'alert');
         panel.setAttribute('data-state', 'error');
         const heading = document.createElement('h2');
-        heading.textContent = 'Unable to load installed mods';
+        uiRender(heading, () => uiText("Unable to load installed mods"));
         const message = document.createElement('p');
-        message.textContent = error instanceof Error
+        uiRender(message, () => error instanceof Error
             ? error.message
-            : 'The installed mod catalogue could not be displayed.';
+            : uiText("The installed mod catalogue could not be displayed."));
         panel.append(heading, message);
         root.replaceChildren(panel);
         root.setAttribute('aria-busy', 'false');
@@ -332,7 +346,7 @@
             };
             const notifications = ProductUI.NotificationCenter({
                 document,
-                label: 'Installed mod operations'
+                label: () => uiText("Installed mod operations")
             });
             root.parentNode?.appendChild(notifications.element);
             const profileList = document.getElementById('profile-list');
@@ -348,7 +362,7 @@
                     profileList.replaceChildren();
                     const unavailable = document.createElement('p');
                     unavailable.className = 'product-profile-empty';
-                    unavailable.textContent = 'Profiles require the transactional Rust runtime.';
+                    uiRender(unavailable, () => uiText("Profiles require the transactional Rust runtime."));
                     profileList.appendChild(unavailable);
                     return;
                 }
@@ -369,7 +383,7 @@
                     if (profiles.length === 0) {
                         const empty = document.createElement('p');
                         empty.className = 'product-profile-empty';
-                        empty.textContent = 'No saved profiles yet.';
+                        uiRender(empty, () => uiText("No saved profiles yet."));
                         profileList.appendChild(empty);
                         return;
                     }
@@ -382,22 +396,24 @@
                         row.className = `product-profile-row${isActive ? ' is-active' : ''}`;
                         const copy = document.createElement('div');
                         const heading = document.createElement('h3');
-                        heading.textContent = id || 'Unnamed profile';
+                        const profileName = document.createElement('span');
+                        uiRender(profileName, () => id || uiText("Unnamed profile"));
+                        heading.appendChild(profileName);
                         if (isActive) {
                             const badge = document.createElement('span');
                             badge.className = 'product-profile-active';
-                            badge.textContent = 'Active';
+                            uiRender(badge, () => uiText("Active"));
                             heading.append(' ', badge);
                         }
                         const summary = document.createElement('p');
                         const mods = profile?.mods?.length ?? profile?.lockedMods?.length ?? 0;
-                        summary.textContent = `${mods} exact mod${mods === 1 ? '' : 's'} · ${profile?.gameId || profile?.game_id || 'game'}`;
+                        uiRender(summary, () => uiText('Exact mods: {0} · {1}', uiNumber(mods), profile?.gameId || profile?.game_id || uiText('Unknown')));
                         copy.append(heading, summary);
                         const actions = document.createElement('div');
                         actions.className = 'product-profile-row-actions';
                         const exportButton = document.createElement('button');
                         exportButton.type = 'button';
-                        exportButton.textContent = 'Export';
+                        uiRender(exportButton, () => uiText("Export"));
                         exportButton.addEventListener('click', async () => {
                             try {
                                 const exported = await invoke('lifecycle:exportProfileLockfile', [id]);
@@ -410,25 +426,25 @@
                                 URL.revokeObjectURL(url);
                             } catch (error) {
                                 notifications.notify({
-                                    title: 'Export profile',
-                                    message: 'The canonical lockfile could not be exported.',
+                                    title: () => uiText("Export profile"),
+                                    message: () => uiText("The canonical lockfile could not be exported."),
                                     tone: 'error'
                                 });
                             }
                         });
                         const activateButton = document.createElement('button');
                         activateButton.type = 'button';
-                        activateButton.textContent = 'Activate';
+                        uiRender(activateButton, () => uiText("Activate"));
                         activateButton.disabled = isActive || !commandAvailable('lifecycle:switchProfile');
-                        if (isActive) activateButton.textContent = 'Active';
+                        if (isActive) uiRender(activateButton, () => uiText("Active"));
                         if (activateButton.disabled) {
-                            activateButton.title = isActive
-                                ? 'This profile already matches the active transactional manifest.'
-                                : 'Profile switching is unavailable in this runtime.';
+                            uiRender(activateButton, () => isActive
+                                ? uiText("This profile already matches the active transactional manifest.")
+                                : uiText("Profile switching is unavailable in this runtime."), "title");
                         } else {
                             activateButton.addEventListener('click', async () => {
                                 const idempotencyKey = operationId('profile-switch');
-                                const result = await runAction(`Activate ${id}`, idempotencyKey, () =>
+                                const result = await runAction(() => uiText("Activate {0}", id), idempotencyKey, () =>
                                     invoke('lifecycle:switchProfile', [id, idempotencyKey]));
                                 if (result) {
                                     await Promise.all([renderProfiles(), render()]);
@@ -443,25 +459,25 @@
                     profileList.replaceChildren();
                     const failure = document.createElement('p');
                     failure.className = 'product-profile-empty';
-                    failure.textContent = 'Profiles are unavailable in this runtime.';
+                    uiRender(failure, () => uiText("Profiles are unavailable in this runtime."));
                     profileList.appendChild(failure);
                 }
             };
             if (profileCreate) {
                 profileCreate.disabled = !commandAvailable('lifecycle:createProfileFromCurrent');
-                profileCreate.title = profileCreate.disabled
-                    ? 'Profile capture is unavailable in this runtime.'
-                    : '';
+                uiRender(profileCreate, () => profileCreate.disabled
+                    ? uiText("Profile capture is unavailable in this runtime.")
+                    : '', "title");
                 profileCreate.addEventListener('click', async () => {
-                    const id = window.prompt?.('Profile ID (letters, numbers, dash, underscore or dot)');
+                    const id = window.prompt?.(uiText("Profile ID (letters, numbers, dash, underscore or dot)"));
                     if (!id) return;
                     try {
                         await invoke('lifecycle:createProfileFromCurrent', [id]);
                         await renderProfiles();
                     } catch (error) {
                         notifications.notify({
-                            title: 'Save profile',
-                            message: lifecycleMessage(error),
+                            title: () => uiText("Save profile"),
+                            message: () => lifecycleMessage(error),
                             tone: 'error'
                         });
                     }
@@ -469,9 +485,9 @@
             }
             if (profileImport && profileImportFile) {
                 profileImport.disabled = !commandAvailable('lifecycle:importProfileLockfile');
-                profileImport.title = profileImport.disabled
-                    ? 'Profile import requires the transactional Rust runtime.'
-                    : '';
+                uiRender(profileImport, () => profileImport.disabled
+                    ? uiText("Profile import requires the transactional Rust runtime.")
+                    : '', "title");
                 profileImport.addEventListener('click', () => profileImportFile.click());
                 profileImportFile.addEventListener('change', async () => {
                     const [file] = profileImportFile.files || [];
@@ -479,8 +495,8 @@
                     if (!file) return;
                     if (file.size > 4 * 1024 * 1024) {
                         notifications.notify({
-                            title: 'Import profile',
-                            message: 'The lockfile exceeds the 4 MiB safety limit.',
+                            title: () => uiText("Import profile"),
+                            message: () => uiText("The lockfile exceeds the 4 MiB safety limit."),
                             tone: 'error'
                         });
                         return;
@@ -489,14 +505,14 @@
                         await invoke('lifecycle:importProfileLockfile', [await file.text()]);
                         await renderProfiles();
                         notifications.notify({
-                            title: 'Import profile',
-                            message: 'The canonical lockfile was validated and saved.',
+                            title: () => uiText("Import profile"),
+                            message: () => uiText("The canonical lockfile was validated and saved."),
                             tone: 'success'
                         });
                     } catch (error) {
                         notifications.notify({
-                            title: 'Import profile',
-                            message: 'The lockfile is invalid, non-canonical or from a newer schema.',
+                            title: () => uiText("Import profile"),
+                            message: () => uiText("The lockfile is invalid, non-canonical or from a newer schema."),
                             tone: 'error'
                         });
                     }
@@ -513,30 +529,30 @@
             const lifecycleMessage = error => {
                 const code = String(error?.message || error || '');
                 if (code.includes('external_modification')) {
-                    return 'The operation stopped because installed files changed outside Deltamod.';
+                    return uiText("The operation stopped because installed files changed outside Deltamod.");
                 }
                 if (code.includes('recovery_unavailable')) {
-                    return 'The exact recovery artifact is unavailable. Reinstall from the original archive.';
+                    return uiText("The exact recovery artifact is unavailable. Reinstall from the original archive.");
                 }
                 if (code.includes('source_identity_mismatch')) {
-                    return 'The selected archive belongs to a different mod.';
+                    return uiText("The selected archive belongs to a different mod.");
                 }
                 if (code.includes('archive_invalid')) {
-                    return 'The selected archive is not a valid Deltamod package.';
+                    return uiText("The selected archive is not a valid Deltamod package.");
                 }
                 if (code.includes('installation_busy')) {
-                    return 'Another filesystem operation is already running for this installation.';
+                    return uiText("Another filesystem operation is already running for this installation.");
                 }
                 if (code.includes('archive_hash_missing')) {
-                    return 'A legacy mod has no exact archive hash yet. Reinstall it before saving a reproducible profile.';
+                    return uiText("A legacy mod has no exact archive hash yet. Reinstall it before saving a reproducible profile.");
                 }
                 if (code.includes('game_unknown')) {
-                    return 'Select a supported game before saving this profile.';
+                    return uiText("Select a supported game before saving this profile.");
                 }
-                return 'The operation could not be completed safely. No unverified changes were committed.';
+                return uiText("The operation could not be completed safely. No unverified changes were committed.");
             };
             const runAction = async (title, operationIdValue, action) => {
-                notifications.notify({ title, message: 'Operation started.', tone: 'info' });
+                notifications.notify({ title, message: () => uiText("Operation started."), tone: 'info' });
                 let settled = false;
                 const polling = operationIdValue && progressHost
                     ? (async () => {
@@ -564,7 +580,7 @@
                     if (!result?.cancelled) {
                         notifications.notify({
                             title,
-                            message: 'Operation completed and verified.',
+                            message: () => uiText("Operation completed and verified."),
                             tone: 'success'
                         });
                     }
@@ -572,7 +588,7 @@
                 } catch (error) {
                     notifications.notify({
                         title,
-                        message: lifecycleMessage(error),
+                        message: () => lifecycleMessage(error),
                         tone: 'error'
                     });
                     return null;
@@ -603,10 +619,10 @@
                     onCopyDiagnostics: copyDiagnostics,
                     onRestore: async journal => {
                         if (typeof window.confirm !== 'function' || !window.confirm(
-                            'Restore the latest working state for this package library? Current verified changes will be backed up first.'
+                            uiText("Restore the latest working state for this package library? Current verified changes will be backed up first.")
                         )) return;
                         const id = operationId('restore');
-                        const result = await runAction('Restore last working state', id, () => invoke(
+                        const result = await runAction(() => uiText("Restore last working state"), id, () => invoke(
                             'lifecycle:restoreLastWorkingState',
                             [journal.installationId, id]
                         ));
@@ -615,14 +631,14 @@
                     onOpenFolder: mod => invoke('openModFolder', [mod.folder]),
                     onUpdate: async mod => {
                         const id = operationId('update');
-                        const result = await runAction(`Update ${mod.name}`, id, () => invoke(
+                        const result = await runAction(() => uiText("Update {0}", mod.nameFallback ? uiText('Unnamed mod') : mod.name), id, () => invoke(
                             'lifecycle:updateMod',
                             [mod.installationId, mod.id, id]
                         ));
                         if (result && !result.cancelled) await render();
                     },
                     onVerify: async mod => {
-                        const result = await runAction(`Verify ${mod.name}`, null, () => invoke(
+                        const result = await runAction(() => uiText("Verify {0}", mod.nameFallback ? uiText('Unnamed mod') : mod.name), null, () => invoke(
                             'lifecycle:verifyMod',
                             [mod.installationId, mod.id]
                         ));
@@ -630,7 +646,7 @@
                     },
                     onRepair: async mod => {
                         const id = operationId('repair');
-                        const result = await runAction(`Repair ${mod.name}`, id, () => invoke(
+                        const result = await runAction(() => uiText("Repair {0}", mod.nameFallback ? uiText('Unnamed mod') : mod.name), id, () => invoke(
                             'lifecycle:repairMod',
                             [mod.installationId, mod.id, id]
                         ));
@@ -638,10 +654,10 @@
                     },
                     onUninstall: async mod => {
                         if (typeof window.confirm !== 'function' || !window.confirm(
-                            `Uninstall ${mod.name}? Externally changed files will be preserved and the operation will stop.`
+                            uiText("Uninstall {0}? Externally changed files will be preserved and the operation will stop.", mod.nameFallback ? uiText('Unnamed mod') : mod.name)
                         )) return;
                         const id = operationId('uninstall');
-                        const result = await runAction(`Uninstall ${mod.name}`, id, () => invoke(
+                        const result = await runAction(() => uiText("Uninstall {0}", mod.nameFallback ? uiText('Unnamed mod') : mod.name), id, () => invoke(
                             'lifecycle:uninstallMod',
                             [mod.installationId, mod.id, id]
                         ));

@@ -163,21 +163,24 @@ fn schedule_import(app: AppHandle, archive: PathBuf) {
 
 fn import_archive(app: &AppHandle, archive: PathBuf) -> Result<(), String> {
     let state = app.state::<state::AppState>();
-    let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app);
+    let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app)
+        .with_translator(crate::localization::text);
+    let unnamed_package = crate::localization::text("Deltamod package");
     let filename = archive
         .file_name()
         .and_then(|value| value.to_str())
-        .unwrap_or("Deltamod package")
+        .unwrap_or(&unnamed_package)
         .chars()
         .take(160)
         .collect::<String>();
     let decision = dialogs
         .choose(
             "Import Deltamod package",
-            &format!(
-                "Deltamod Community CLI requested an import of:\n\n{filename}\n\nThe package will be validated and staged before it is installed."
+            &crate::localization::format(
+                "Deltamod Community CLI requested an import of:\n\n{0}\n\nThe package will be validated and staged before it is installed.",
+                &[&filename],
             ),
-            &["Import package".to_owned()],
+            &[crate::localization::text("Import package")],
         )
         .map_err(|_| "The import confirmation dialog could not be opened.".to_owned())?;
     if decision != Some(0) {
@@ -203,8 +206,8 @@ fn show_error(app: &AppHandle, message: &str) {
     let bounded = message.chars().take(512).collect::<String>();
     let _ = app.emit("gplog", json!({"log": bounded.clone(), "percent": -1.0}));
     app.dialog()
-        .message(bounded)
-        .title("Deltamod import failed")
+        .message(crate::localization::text(&bounded))
+        .title(crate::localization::text("Deltamod import failed"))
         .blocking_show();
 }
 

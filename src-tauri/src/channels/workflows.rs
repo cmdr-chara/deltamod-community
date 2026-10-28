@@ -414,7 +414,8 @@ pub fn dispatch(
                     source.clone()
                 } else {
                     let dialogs =
-                        deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app);
+                        deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app)
+                            .with_translator(crate::localization::text);
                     let Some(common) = dialogs
                         .pick(&DialogRequest::folder(
                             "Select the Steam game or common folder",
@@ -486,7 +487,7 @@ pub fn dispatch(
             // A managed copy must launch directly; a Steam URI would open the original.
             store.insert("isSteam".into(), json!(steam && mac_bundle.is_none()));
             store.insert("steamAppId".into(), json!(steam_app_id));
-            let name = format!("Install #{}", index + 1);
+            let name = crate::localization::format("Install #{0}", &[&(index + 1).to_string()]);
             let created = run_copy_workflow(app, &state.profile_runtime, || {
                 match &mac_bundle {
                     Some(bundle) => state
@@ -575,7 +576,8 @@ pub fn dispatch(
                 .and_then(Value::as_str)
                 .ok_or_else(|| error::invalid("reimportInstallation"))?;
             let game = game_definition(&state._assets.app, game_id, "reimportInstallation")?;
-            let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app);
+            let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app)
+                .with_translator(crate::localization::text);
             let selected = dialogs
                 .pick(&DialogRequest::folder(
                     "Choose a clean game installation to re-import",

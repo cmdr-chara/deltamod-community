@@ -132,14 +132,22 @@ fn all_themes(state: &AppState, channel: &str) -> Result<Vec<Value>, String> {
         .map_err(|_| runtime_error(channel))?
     {
         if !built_in_ids.contains(&custom.id) {
+            let description_source = custom
+                .description
+                .as_deref()
+                .filter(|description| !description.is_empty())
+                .is_none()
+                .then_some("Custom theme");
             themes.push(json!({
                 "id": custom.id,
                 "name": custom.name,
-                "description": custom.description.unwrap_or_else(|| "Custom theme".to_owned()),
+                "description": custom.description.filter(|description| !description.is_empty()).unwrap_or_else(|| crate::localization::text("Custom theme")),
+                "descriptionSource": description_source,
                 "builtIn": false,
                 "background": custom.icon,
                 "mainSong": custom.music,
-                "musicTrack": "Custom audio",
+                "musicTrack": crate::localization::text("Custom audio"),
+                "musicTrackSource": "Custom audio",
                 "color": custom.color.unwrap_or_else(|| "rgb(205, 68, 81)".to_owned()),
                 "soulColor": custom.soul_color.unwrap_or_else(|| "#FF0000".to_owned()),
                 "runtimeLayout": true
@@ -1431,11 +1439,18 @@ gamebanana_model = "Mod"
         fs::create_dir_all(&theme_root).unwrap();
         fs::write(
             theme_root.join("theme.json"),
-            r##"{"id":"custom_test","name":"Custom","description":"Original","builtIn":false,"icon":"background.png","music":"music.ogg","color":"#143E80","soulColor":"#003CFF"}"##,
+            r##"{"id":"custom_test","name":"Custom","description":"Custom theme","builtIn":false,"icon":"background.png","music":"music.ogg","color":"#143E80","soulColor":"#003CFF"}"##,
         )
         .unwrap();
         fs::write(theme_root.join("background.png"), b"test image").unwrap();
         fs::write(theme_root.join("music.ogg"), b"test audio").unwrap();
+        let fallback_root = state.data_root.root.join("themes").join("custom_empty");
+        fs::create_dir_all(&fallback_root).unwrap();
+        fs::write(
+            fallback_root.join("theme.json"),
+            r#"{"id":"custom_empty","name":"Empty description","description":"","builtIn":false}"#,
+        )
+        .unwrap();
 
         let themes = dispatch(&state, "getThemes", &[]).unwrap().unwrap();
         let custom = themes
@@ -1449,6 +1464,20 @@ gamebanana_model = "Mod"
         assert_eq!(custom["color"], "#143E80");
         assert_eq!(custom["soulColor"], "#003CFF");
         assert_eq!(custom["runtimeLayout"], true);
+        assert_eq!(custom["description"], "Custom theme");
+        assert!(custom["descriptionSource"].is_null());
+        assert_eq!(custom["musicTrackSource"], "Custom audio");
+        let fallback = themes
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|theme| theme["id"] == "custom_empty")
+            .unwrap();
+        assert_eq!(fallback["descriptionSource"], "Custom theme");
+        assert_eq!(
+            fallback["description"],
+            crate::localization::text("Custom theme")
+        );
         assert!(state
             .assets
             .resolve("theme://asset/custom_test/background.png")

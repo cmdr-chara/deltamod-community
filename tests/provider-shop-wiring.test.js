@@ -52,8 +52,8 @@ describe('provider Mod Shop shell wiring', () => {
         expect(markup).toContain('id="modGameSelect"');
         expect(renderer).toContain("invoke('getAvailableGames', [])");
         expect(renderer).toContain("localStorage.setItem('modShopGameId'");
-        expect(renderer).toContain("'Mod Shop could not be loaded'");
-        expect(renderer).toContain("'GameBanana could not be loaded'");
+        expect(renderer).toContain('shop_ui_mod_shop_could_not_be_loaded');
+        expect(renderer).toContain('shop_ui_gamebanana_could_not_be_loaded');
     });
 
     it('has no dead Game Jolt or itch.io Mod Shop rendering branches', () => {
@@ -90,10 +90,11 @@ function downloadHarness(outcome) {
     const describeError = renderer.slice(renderer.indexOf('function describeError('), renderer.indexOf('function gameSupportsProvider('));
     const dlmod = runInNewContext('let gameBananaDownloadActive = false; let pageActive = true; ' + describeError + action + '; dlmod', {
         window, document: { querySelectorAll: () => buttons },
+        t: (_key, fallback, ...args) => fallback.replace(/\{(\d+)\}/g, (match, index) => args[index] ?? match),
         isCurrentShopPage: () => state.current,
         setDownloadButtonIcon: (button, icon) => icons.push(icon),
         updateModDownloadStatus: status => phases.push(status.phase),
-        htmlAlert: async (...args) => alerts.push(args)
+        htmlAlert: async (...args) => alerts.push(args.map(value => typeof value === 'function' ? value() : value))
     });
     return { dlmod, window, button, buttons, state, phases, icons, alerts };
 }
@@ -168,5 +169,61 @@ describe('GameBanana download eligibility', () => {
         const broken = { _idRow: 3, _aModManagerIntegrations: [{ _idToolRow: 20575 }] };
         expect(eligible([file(1), broken, { _idRow: 4 }])).toEqual([]);
         expect(eligible(undefined)).toEqual([]);
+    });
+});
+
+describe('app-owned native error localization', () => {
+    const { runInNewContext } = require('node:vm');
+    const errorHelpers = renderer.slice(renderer.indexOf('function describeError('), renderer.indexOf('function gameSupportsProvider('));
+    const providerHelpers = renderer.slice(renderer.indexOf('function sourceText('), renderer.indexOf('function socialCount('));
+
+    it('retranslates explicit message sources while preserving literal provider diagnostics', () => {
+        let language = 'ja';
+        const describe = runInNewContext(errorHelpers + '; describeError', {
+            window: { Localization: { text: source => `${language}:${source}` } }
+        });
+        const owned = { message: 'previously translated', messageSource: 'Nexus Mods is unavailable.' };
+        expect(describe(owned)).toBe('ja:Nexus Mods is unavailable.');
+        language = 'ko';
+        expect(describe(owned)).toBe('ko:Nexus Mods is unavailable.');
+        expect(describe({ message: 'Options <literal>' })).toBe('Options <literal>');
+        expect(describe('RAW_PROVIDER_CODE')).toBe('RAW_PROVIDER_CODE');
+    });
+
+    it('keeps download failure sources live through the response error wrapper', async () => {
+        let language = 'ja';
+        let message;
+        const progress = [];
+        const action = renderer.slice(renderer.indexOf('async function downloadNexusSource('), renderer.indexOf('const EXTERNAL_SOURCE_LABELS'));
+        const download = runInNewContext(errorHelpers + providerHelpers + action + '; downloadNexusSource', {
+            window: {
+                Localization: { text: source => `${language}:${source}` },
+                communityAPI: { modSources: {
+                    onProgress: () => () => {},
+                    downloadNexus: async () => ({ ok: false, error: {
+                        code: 'NEXUS_DOWNLOAD_FAILED', message: 'previously translated',
+                        messageSource: 'Nexus Mods is unavailable.'
+                    } })
+                } }
+            },
+            crypto: { randomUUID: () => 'test-operation' },
+            t: (_key, fallback) => fallback,
+            setDownloadButtonIcon() {},
+            updateModDownloadStatus: state => progress.push(state),
+            copyRateLimitMetadata() {}, isNexusRateLimited: () => false,
+            htmlAlert: async (_title, render) => { message = render; return 'ok'; }
+        });
+        const button = {
+            innerHTML: 'Download', textContent: 'Download', disabled: false,
+            classList: { remove() {} }, style: { removeProperty() {} }
+        };
+        await download({ id: '1', title: 'Native fallback snapshot', titleSource: 'Mod', sourceUrl: 'https://example.test/mod' }, button);
+        expect(progress[0].currentItem()).toBe('ja:Mod');
+        expect(message()).toBe('ja:Nexus Mods is unavailable.');
+        language = 'ko';
+        expect(progress[0].currentItem()).toBe('ko:Mod');
+        expect(message()).toBe('ko:Nexus Mods is unavailable.');
+        expect(progress.at(-1).currentItem()).toBe('ko:Nexus Mods is unavailable.');
+        expect(button.disabled).toBe(false);
     });
 });

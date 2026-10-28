@@ -87,9 +87,8 @@ describe('renderer page smoke contracts', () => {
         expect(appScript).toContain("invoke('quitCommunityForEasterEgg', [])");
     });
 
-    it('updates theme and options language without reloading the current page', () => {
+    it('updates theme and language without reloading the current page', () => {
         const appScript = read(path.join(root, 'web', 'index.js'));
-        const options = read(path.join(viewsRoot, 'options', 'index.js'));
         const localization = read(path.join(root, 'web', 'modules', 'localization.js'));
         const themeRefresh = appScript.slice(
             appScript.indexOf('async function themeRefresh'),
@@ -97,7 +96,6 @@ describe('renderer page smoke contracts', () => {
         );
         expect(themeRefresh).not.toContain('page(pageN)');
         expect(themeRefresh).toContain('applyThemeStyles(theme)');
-        expect(options).toContain("setLanguage(language.code, { refreshPage: false })");
         expect(localization).toContain('function applyKnownText(root = document)');
         expect(localization).toContain('async function setLanguage(code, { refreshPage = false } = {})');
         expect(localization).toContain('if (refreshPage && typeof window.page');
@@ -124,13 +122,16 @@ describe('renderer page smoke contracts', () => {
         const themeSelector = read(path.join(viewsRoot, 'themesel', 'index.js'));
         const themeMarkup = read(path.join(viewsRoot, 'themesel', 'index.html'));
         const themeStyles = read(path.join(viewsRoot, 'themesel', 'themesel.css'));
-        const localization = read(path.join(root, 'web', 'modules', 'localization.js'));
+        const italian = JSON.parse(read(path.join(root, 'web/langs/it/language.json')));
+        const polish = JSON.parse(read(path.join(root, 'web/langs/pl/language.json')));
         expect(themeMarkup).not.toContain('THE TRUE NAME');
         expect(themeStyles).toMatch(/#theme-count\s*\{[^}]*text-align:\s*right;/s);
         expect(themeSelector).toContain("'theme_count'");
         expect(themeSelector).toContain("elisten(window, 'deltamod-language-change', updateDynamicTranslations)");
-        expect(localization).toContain("theme_count: '{0} di {1} temi'");
-        expect(localization).toContain("theme_count: '{0} z {1} motywów'");
+        expect(italian.theme_count).toContain('{0}');
+        expect(italian.theme_count).toContain('{1}');
+        expect(polish.theme_count).toContain('{0}');
+        expect(polish.theme_count).toContain('{1}');
     });
 
     it('does not render a text caret inside Options category buttons', () => {

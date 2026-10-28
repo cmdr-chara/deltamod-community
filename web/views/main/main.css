@@ -112,6 +112,25 @@ a {
   backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
 }
 
+.patch-actions > .vanilla-launch {
+  display: inline-flex;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 260px;
+  height: auto;
+  min-height: 46px;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: start;
+}
+
+.vanilla-launch > .material-symbols-outlined {
+  flex-shrink: 0;
+}
+
 .patch-actions > button {
   display: grid;
   flex: 0 0 46px;
