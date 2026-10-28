@@ -1,0 +1,79 @@
+/* SPDX-FileCopyrightText: 2026 cmdr-chara
+ * SPDX-License-Identifier: EUPL-1.2 */
+@font-face { font-family: "Noto Sans Arabic"; src: url("../commons/fonts/NotoSansArabic.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Noto Sans Thai"; src: url("../commons/fonts/NotoSansThai.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../commons/fonts/NotoSans.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Noto Sans CJK"; src: url("../commons/fonts/NotoSansCJKsc-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+/* Extend the original display face only where Latin extended glyphs are needed. */
+@font-face { font-family: "Pixel"; src: url("../commons/fonts/NotoSans.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0100-024F, U+1E00-1EFF; }
+/* Keep the existing Latin pixel identity, with shaping-capable script fonts. */
+:root { --script-font: system-ui, sans-serif; }
+:lang(ar) { --script-font: "Noto Sans Arabic", "Geeza Pro", "Segoe UI", Tahoma, sans-serif; }
+:lang(zh-CN) { --script-font: "Noto Sans CJK", "Microsoft YaHei", "PingFang SC", "WenQuanYi Micro Hei", sans-serif; }
+:lang(zh-TW) { --script-font: "Noto Sans CJK", "Microsoft JhengHei", "PingFang TC", sans-serif; }
+:lang(ja) { --script-font: "Noto Sans CJK", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+:lang(ko) { --script-font: "Noto Sans CJK", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+:lang(th) { --script-font: "Noto Sans Thai", "Leelawadee UI", Thonburi, Tahoma, sans-serif; }
+:lang(ru), :lang(uk) { --script-font: "Noto Sans", "Segoe UI", "DejaVu Sans", Arial, sans-serif; }
+html:is(:lang(ar), :lang(zh), :lang(ja), :lang(ko), :lang(th), :lang(ru), :lang(uk))
+    :is(body, button, input, select, textarea, table, th, td, h1, h2, h3, h4, p, label, small, summary, output, li, dt, dd, div, span, a, time, strong, b, em, option, .calibri, .allcalibri, #pageTitle, [data-i18n]):not([class*="material-symbols"]):not([class*="material-icons"]) {
+    font-family: var(--script-font) !important;
+    letter-spacing: normal;
+    font-variant-ligatures: normal;
+    text-rendering: optimizeLegibility;
+}
+html:is(:lang(ar), :lang(th)) :is(h1, h2, h3, p, button, label, #pageTitle) { line-height: 1.55; }
+.language-wheel :lang(ar), .language-wheel :lang(zh), .language-wheel :lang(ja),
+.language-wheel :lang(ko), .language-wheel :lang(th), .language-wheel :lang(ru), .language-wheel :lang(uk) { font-family: var(--script-font); }
+
+/* Layout follows document direction; artwork, media controls and game icons do not. */
+html[dir="rtl"] .sidebar { left: auto; right: 0; border-right: 0; border-left: 1px solid var(--panel-border); }
+html[dir="rtl"] :is(.viewport, .topbar, .content-header) { left: 0; right: var(--rail-width); }
+html[dir="rtl"] .topbar { padding-left: 0; padding-right: 20px; }
+html[dir="rtl"] .topbar > .title { justify-content: flex-start !important; }
+html[dir="rtl"] .barbtns { margin-right: 0; margin-left: 8px; direction: ltr; }
+html[dir="rtl"] .language-wheel-toggle { left: auto; right: calc((var(--rail-width) - 44px) / 2); }
+html[dir="rtl"] .gamebanana-account { left: auto; right: 11px; }
+html[dir="rtl"] :is(.sidebar-button, .gamebanana-account)::after { left: auto; right: 54px; }
+html[dir="rtl"] .dmodicon { left: auto; right: -20px; }
+html[dir="rtl"] :is(th, td, .options-page .cat button, .options-page .opt, .alertMsg, .product-card) { text-align: start; }
+html[dir="rtl"] :is(.alertButtons, .btnarray) { justify-content: flex-start; }
+html[dir="rtl"] .alertBigIcon { right: auto; left: -50px; }
+html[dir="rtl"] .options-page .page-heading { padding-left: 0; padding-right: 18px; }
+html[dir="rtl"] .options-page .page-heading::before { left: auto; right: 0; }
+html[dir="rtl"] .options-page .ingranaggio { left: auto; right: -142px; }
+html[dir="rtl"] body .viewport .options-page .cat > button:not(.selected),
+html[dir="rtl"] .options-page .cat > button.selected { text-align: start; }
+html[dir="rtl"] .options-page .cat > button.selected { padding-left: 12px !important; padding-right: 16px !important; box-shadow: inset -3px 0 0 rgba(255, 255, 255, .82), 0 8px 18px color-mix(in srgb, var(--theme-color) 24%, transparent); }
+html[dir="rtl"] .options-page .cat > button::after { margin-left: 0; margin-right: auto; }
+html[dir="rtl"] [data-directional-icon], html[dir="rtl"] .directional-icon { transform: scaleX(-1); }
+html[dir="rtl"] :is(.shop-preview-nav, .mod-image-nav) .material-symbols-outlined { transform: scaleX(-1); }
+html[dir="rtl"] #modtable :is(th, td):first-child { text-align: start; }
+
+/* App-owned tables and dialogs can grow when translated; labels never impose a fixed row height. */
+:where(button, .control-save-status, .product-badge, .patch-mod-title, .language-name) { overflow-wrap: anywhere; }
+:where(button:not(.bar-button):not(.language-wheel-option), label, th, td) { white-space: normal; }
+:where(.patch-toolbar, .patch-actions, .alertButtons, .product-actions, .profile-actions) { flex-wrap: wrap; }
+:where(.content-page, .options-layout > *, .patch-toolbar-copy, .mod-search-toolbar, .product-card, .alertMsg) { min-inline-size: 0; }
+:where(dialog, .alertMsg) { max-inline-size: min(94vw, 900px); max-block-size: 85vh; overflow-y: auto; }
+:where(input, select, textarea) { max-inline-size: 100%; box-sizing: border-box; }
+:where(input[type="text"], input[type="search"], textarea, [data-user-content]) { unicode-bidi: plaintext; }
+:where(bdi, [data-bidi]) { unicode-bidi: isolate; }
+:where(code, pre, .logs, [data-technical]) { direction: ltr; text-align: left; unicode-bidi: isolate; overflow-wrap: anywhere; }
+:where(.mod-name, .patch-mod-title, .gamebanana-account-name, .product-package-id) { unicode-bidi: plaintext; }
+.theme-description.is-editable:empty::before { content: attr(data-placeholder); pointer-events: none; opacity: .7; }
+
+/* Seventeen equal sectors retain the wheel and give each language its own focus target. */
+.language-wheel-option, .language-wheel-option:not(:hover) { width: 40px; height: 40px; border-radius: 50%; }
+.language-wheel-option:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+.language-wheel-current { padding: 12px; gap: 6px; }
+.language-wheel-current img { width: 60px; height: 38px; }
+#language-wheel-current-name { font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.25; max-inline-size: 106px; overflow-wrap: anywhere; }
+.language-wheel { direction: ltr; }
+@media (max-width: 700px) {
+    .options-layout { grid-template-columns: minmax(0, 1fr) !important; }
+    .options-page .cat { position: static; display: flex; flex-wrap: wrap; }
+    .patch-toolbar { align-items: flex-start; }
+    html[dir="rtl"] .options-page .ingranaggio { right: -96px; }
+}
+@media (max-width: 380px), (max-height: 400px) { .language-wheel { scale: .85; } }

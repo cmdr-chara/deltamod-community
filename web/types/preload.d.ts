@@ -10,6 +10,7 @@ type ProgressEvent = {
     completed: number;
     total: number;
     currentItem: string;
+    currentItemSource?: string;
 };
 
 type OfficialProfileSummary = {

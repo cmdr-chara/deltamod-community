@@ -452,7 +452,7 @@ describe('Installed Mods v2 product UI', () => {
             source: 'legacy-live',
             status: 'ready',
             readOnly: true,
-            libraryWarning: '1 installed record could not be read.'
+            libraryWarning: 'Installed records that could not be read: 1.'
         });
         expect(model.mods[0]).toMatchObject({
             id: 'live-mod',
@@ -889,6 +889,78 @@ describe('Installed Mods v2 product UI', () => {
             'utf8'
         );
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    });
+
+    it('switches owned labels without changing provider text, filters, confirmation input or focus', () => {
+        const bindings = new Map();
+        let language = 'en';
+        const french = {
+            'Game health': 'Santé du jeu',
+            'Search name, version, or provider': 'Rechercher un nom, une version ou une source',
+            'Confirm destructive action': 'Confirmer la suppression',
+            Cancel: 'Annuler',
+            Confirm: 'Confirmer',
+            Ready: 'Prêt',
+            Delete: 'Supprimer'
+        };
+        vi.stubGlobal('Localization', {
+            text: (source, ...args) => (language === 'fr' ? french[source] || source : source)
+                .replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index])),
+            number: (value, options) => new Intl.NumberFormat(language, options).format(value),
+            getLocale: () => language,
+            bindComputed: (element, render, attribute = 'textContent') => {
+                if (!bindings.has(element)) bindings.set(element, new Map());
+                const update = () => attribute === 'textContent'
+                    ? element.textContent = render()
+                    : element.setAttribute(attribute, render());
+                bindings.get(element).set(attribute, update);
+                update();
+                return element;
+            }
+        });
+        try {
+            const fixture = readFixture();
+            fixture.installedMod.displayName = 'Ready';
+            fixture.providerDescriptor.displayName = 'Delete';
+            const document = new TestDocument();
+            const root = createRoot(document);
+            const model = ProductUI.mapContractsV1Fixture(fixture);
+            ProductUI.renderInstalledModsV2(root, model, { document });
+            const search = root.querySelector('.product-library-search');
+            const filter = root.querySelector('.product-library-filter');
+            search.value = 'Ready';
+            search.dispatchEvent(new TestEvent('input'));
+            filter.value = 'attention';
+            filter.dispatchEvent(new TestEvent('change'));
+            const name = root.querySelector('.product-mod-name');
+            const confirmation = ProductUI.DangerConfirmation({ document, requiredText: 'Ready' });
+            document.body.appendChild(confirmation.element);
+            confirmation.open();
+            confirmation.confirmationInput.value = 'Ready';
+            confirmation.confirmationInput.dispatchEvent(new TestEvent('input'));
+
+            language = 'fr';
+            for (const [element, updates] of bindings) {
+                if (element.isConnected) for (const update of updates.values()) update();
+            }
+
+            expect(root.textContent).toContain('Santé du jeu');
+            expect(root.querySelector('.product-mod-name')).toBe(name);
+            expect(name.textContent).toBe('Ready');
+            expect(root.querySelector('.product-provider-badge').textContent).toBe('Delete');
+            expect(root.querySelector('.product-library-search')).toBe(search);
+            expect(search.value).toBe('Ready');
+            expect(search.getAttribute('placeholder')).toBe('Rechercher un nom, une version ou une source');
+            expect(filter.value).toBe('attention');
+            expect(confirmation.cancelButton.textContent).toBe('Annuler');
+            expect(confirmation.confirmButton.textContent).toBe('Confirmer');
+            expect(confirmation.confirmationInput.value).toBe('Ready');
+            expect(confirmation.confirmButton.disabled).toBe(false);
+            expect(document.activeElement).toBe(confirmation.confirmationInput);
+            expect(confirmation.element.open).toBe(true);
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it('fails closed for unknown contract schema versions', () => {

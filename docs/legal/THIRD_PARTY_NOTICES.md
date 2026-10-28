@@ -35,3 +35,22 @@ process under GPL-3.0-only; Deltamod Community remains under EUPL-1.2.
 Deltamod Community packages butler 15.30.0 from https://broth.itch.zone/butler.
 butler is Copyright itch.io contributors and is distributed under the MIT License.
 Source: https://github.com/itchio/butler
+
+## Noto interface fonts
+
+The application bundles Noto Sans, Noto Sans Arabic, Noto Sans Thai, and Noto
+Sans CJK to render supported scripts without a network connection. These font
+assets are third-party material under the SIL Open Font License 1.1; they are
+not claimed as Community-original code.
+
+- Noto Sans CJK: [notofonts/noto-cjk](https://github.com/notofonts/noto-cjk),
+  revision `f8d157532fbfaeda587e826d4cd5b21a49186f7c`.
+- Noto Sans, Arabic, and Thai: [google/fonts](https://github.com/google/fonts),
+  revision `9862abc066c9b83bf84c3e8ed1fc2d8d48f9bbf0`.
+- The four complete license notices, source URLs, SHA-256 digests, and glyph
+  coverage records are included in [`web/commons/fonts`](../../web/commons/fonts).
+
+The source fonts were converted to WOFF2 transport format without subsetting or
+changing glyph designs. Noto Sans CJK retains its Japanese, Korean, Simplified
+Chinese, and Traditional Chinese localized forms. Font licensing does not
+replace the EUPL-1.2 license covering Deltamod Community code.

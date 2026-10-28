@@ -1,30 +1,30 @@
 <div>
-    <h1>$$locate_title$$</h1>
-    <p class="calibri">$$locate_desc$$</p>
+    <h1 data-i18n="locate_title">$$locate_title$$</h1>
+    <p class="calibri" data-i18n="locate_desc">$$locate_desc$$</p>
     <hr>
     <div>
         <p style="display: flex; justify-content: left; align-items: center; gap: 10px;">
             <span class="material-symbols-outlined" aria-hidden="true">gamepad_up</span>
-            $$locate_selectgame$$
+            <span data-i18n="locate_selectgame">$$locate_selectgame$$</span>
         </p>
-        <div class="gOptions" role="group" aria-label="$$locate_selectgame$$"></div>
+        <div class="gOptions" role="group" aria-label="$$locate_selectgame$$" data-i18n-aria-label="locate_selectgame"></div>
         <p style="display: flex; justify-content: left; align-items: center; gap: 10px;">
             <span class="material-symbols-outlined" aria-hidden="true">folder</span>
-            $$locate_selectfolder$$
+            <span data-i18n="locate_selectfolder">$$locate_selectfolder$$</span>
         </p>
         <div class="fileInput" style="display: flex; justify-content: left; align-items: stretch; gap: 5px;">
-            <input type="text" id="dpath" placeholder="$$locate_path_placeholder$$" style="width: 100%;" autocomplete="off">
-            <button class="folder-picker-button" type="button" onclick="window.currentPageStack.locateDelta()" aria-label="$$locate_selectfolder$$">
+            <input type="text" id="dpath" placeholder="$$locate_path_placeholder$$" style="width: 100%;" autocomplete="off" data-i18n-placeholder="locate_path_placeholder">
+            <button class="folder-picker-button" type="button" onclick="window.currentPageStack.locateDelta()" aria-label="$$locate_selectfolder$$" data-i18n-aria-label="locate_selectfolder">
                 <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
             </button>
         </div>
-        <p class="smaller">$$locate_other_methods$$</p>
+        <p class="smaller" data-i18n="locate_other_methods">$$locate_other_methods$$</p>
         <div class="otherImports">
             <button type="button" onclick="window.currentPageStack.steam()" id="feat_steam">
-                <brand-icon style="font-size: 14px;" aria-hidden="true">S</brand-icon> $$locate_steam_import$$
+                <brand-icon style="font-size: 14px;" aria-hidden="true">S</brand-icon> <span data-i18n="locate_steam_import">$$locate_steam_import$$</span>
             </button>
             <button type="button" onclick="window.currentPageStack.downloadDelta()" id="feat_autodownload">
-                <span class="material-symbols-outlined" style="font-size: 14px;" aria-hidden="true">cloud_download</span> $$locate_autodownload$$
+                <span class="material-symbols-outlined" style="font-size: 14px;" aria-hidden="true">cloud_download</span> <span data-i18n="locate_autodownload">$$locate_autodownload$$</span>
             </button>
         </div>
     </div>
@@ -32,16 +32,16 @@
     <hr>
     <div class="copyAnyways">
         <input type="checkbox" id="copyAnyways">
-        <label for="copyAnyways">$$locate_copyanyways$$</label>
+        <label for="copyAnyways" data-i18n="locate_copyanyways">$$locate_copyanyways$$</label>
     </div>
     <section id="gameImportProgress" class="importProgress" hidden aria-live="polite">
-        <div><strong id="gameImportPhase">Preparing import…</strong> <span id="gameImportAmount"></span></div>
+        <div><strong id="gameImportPhase" data-i18n="ui_preparing_import_b6ff290e">Preparing import…</strong> <span id="gameImportAmount"></span></div>
         <progress id="gameImportBar" value="0" max="1"></progress>
         <small id="gameImportFile" class="calibri"></small>
-        <button id="cancelGameImport" type="button">Cancel import</button>
+        <button id="cancelGameImport" type="button" data-i18n="ui_cancel_import_73da9a98">Cancel import</button>
     </section>
     <br>
-    <button type="button" onclick="window.currentPageStack.id()">$$save_and_close$$</button>
+    <button type="button" onclick="window.currentPageStack.id()" data-i18n="save_and_close">$$save_and_close$$</button>
     <br><br>
 </div>
 STYLESHEET[index]

@@ -701,6 +701,30 @@ input {
     line-height: 0;
 }
 
+.shop-page .shop-social-action {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    vertical-align: middle;
+    width: 76px;
+    height: auto;
+    min-height: 68px;
+    margin: 0 !important;
+    margin-inline-start: 4px !important;
+    padding: 7px 4px;
+    border-radius: 12px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    font-family: system-ui, sans-serif;
+}
+.shop-social-label { font-size: 11px; max-width: 100%; }
+.shop-social-count { font-size: 12px; font-variant-numeric: tabular-nums; }
+.shop-social-action .shop-action-icon { width: 18px; height: 18px; }
+.shop-social-action.is-liked .shop-action-icon { fill: currentColor; }
+.shop-page .shop-action-cell { white-space: normal; }
+
 .mod-download-status {
     box-sizing: border-box;
     margin: 10px 0 14px;

@@ -4,6 +4,20 @@
 (() => {
     'use strict';
 
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
+
     const backend = window.deltamodBackend;
     const form = document.getElementById('installer-form');
     const directory = document.getElementById('install-directory');
@@ -27,8 +41,10 @@
     let installedDirectory = '';
     let installing = false;
 
+    const resolveText = value => String((typeof value === 'function' ? value() : value) ?? '');
+
     function setStatus(message, isError = false) {
-        status.textContent = message;
+        uiRender(status, () => resolveText(message));
         status.dataset.error = isError ? 'true' : 'false';
     }
 
@@ -37,33 +53,33 @@
         const display = Math.round(clamped * 100);
         progressFill.style.width = `${display}%`;
         progressTrack.setAttribute('aria-valuenow', String(display));
-        phase.textContent = nextPhase;
-        percent.textContent = `${String(display).padStart(2, '0')}%`;
-        detail.textContent = nextDetail;
-        footerState.textContent = nextPhase;
+        uiRender(phase, () => resolveText(nextPhase));
+        uiRender(percent, () => uiNumber(clamped, { style: 'percent', maximumFractionDigits: 0 }));
+        uiRender(detail, () => resolveText(nextDetail));
+        uiRender(footerState, () => resolveText(nextPhase));
     }
 
     function setBusy(busy) {
         installing = busy;
         directory.disabled = busy;
         installButton.disabled = busy;
-        installButton.textContent = busy ? 'Installing…' : 'Install';
+        uiRender(installButton, () => busy ? uiText("Installing…") : uiText("Install"));
         document.body.dataset.installerState = busy ? 'installing' : 'idle';
     }
 
     function setScreenCopy(nextState) {
         if (nextState === 'installing') {
-            heading.textContent = 'Installing Deltamod Community';
-            lede.textContent = 'Downloading and preparing the app. You can leave this window open.';
+            uiRender(heading, () => uiText("Installing Deltamod Community"));
+            uiRender(lede, () => uiText("Downloading and preparing the app. You can leave this window open."));
             return;
         }
         if (nextState === 'ready') {
-            heading.textContent = 'Deltamod Community is ready';
-            lede.textContent = 'Installation completed successfully.';
+            uiRender(heading, () => uiText("Deltamod Community is ready"));
+            uiRender(lede, () => uiText("Installation completed successfully."));
             return;
         }
-        heading.textContent = 'Install Deltamod Community';
-        lede.textContent = 'Choose a folder, then Deltamod will handle the rest.';
+        uiRender(heading, () => uiText("Install Deltamod Community"));
+        uiRender(lede, () => uiText("Choose a folder, then Deltamod will handle the rest."));
     }
 
     async function closeSetup() {
@@ -90,13 +106,17 @@
             await closeSetup();
         } catch (error) {
             launchButton.disabled = false;
-            setStatus(error?.message || 'Deltamod could not be launched.', true);
+            setStatus(() => error?.message || uiText("Deltamod could not be launched."), true);
         }
     });
 
     backend?.on?.('installer-progress', payload => {
         if (!payload || typeof payload !== 'object') return;
-        setProgress(payload.progress, payload.phase || 'Working', payload.detail || '');
+        setProgress(payload.progress, () => {
+            const labels = { connecting: 'Connecting', downloading: 'Downloading', installing: 'Installing…', verifying: 'Verifying', ready: 'Ready', working: 'Working' };
+            const source = labels[String(payload.phase || '').toLowerCase()];
+            return source ? uiText(source) : (payload.phase || uiText('Working'));
+        }, () => payload.detail || '');
     });
 
     form.addEventListener('submit', async event => {
@@ -104,12 +124,12 @@
         if (installing) return;
         const target = directory.value.trim();
         if (!target) {
-            setStatus('Choose an installation folder to continue.', true);
+            setStatus(() => uiText("Choose an installation folder to continue."), true);
             directory.focus();
             return;
         }
         if (!backend?.invoke) {
-            setStatus('The standalone setup is only available inside the Deltamod shell.', true);
+            setStatus(() => uiText("The standalone setup is only available inside the Deltamod shell."), true);
             return;
         }
 
@@ -118,23 +138,23 @@
         setScreenCopy('installing');
         form.hidden = true;
         targetSummary.hidden = false;
-        targetSummary.textContent = `Installing to ${target}`;
+        uiRender(targetSummary, () => uiText("Installing to {0}", target));
         targetSummary.title = target;
         progress.hidden = false;
         actions.hidden = true;
-        setStatus('');
-        setProgress(0.08, 'Connecting', 'Contacting the Deltamod release server');
+        setStatus(() => '');
+        setProgress(0.08, () => uiText("Connecting"), () => uiText("Contacting the Deltamod release server"));
         try {
             await backend.invoke('installerInstall', [target]);
             form.hidden = true;
             actions.hidden = false;
             document.body.dataset.installerState = 'ready';
             setScreenCopy('ready');
-            targetSummary.textContent = `Installed in ${target}`;
-            setStatus('');
-            setProgress(1, 'Ready', 'Installation complete');
+            uiRender(targetSummary, () => uiText("Installed in {0}", target));
+            setStatus(() => '');
+            setProgress(1, () => uiText("Ready"), () => uiText("Installation complete"));
             progress.hidden = true;
-            footerState.textContent = 'Installation complete';
+            uiRender(footerState, () => uiText("Installation complete"));
         } catch (error) {
             setBusy(false);
             document.body.dataset.installerState = 'error';
@@ -142,8 +162,8 @@
             form.hidden = false;
             targetSummary.hidden = true;
             progress.hidden = true;
-            setStatus(error?.message || 'The installation could not be completed.', true);
-            footerState.textContent = 'Setup needs attention';
+            setStatus(() => error?.message || uiText("The installation could not be completed."), true);
+            uiRender(footerState, () => uiText("Setup needs attention"));
         }
     });
 
@@ -152,9 +172,9 @@
             const info = await backend?.invoke?.('installerInfo', []);
             if (info?.defaultInstallDir) directory.value = info.defaultInstallDir;
             if (info?.defaultInstallDir) directory.title = info.defaultInstallDir;
-            if (info?.version) version.textContent = `Version ${info.version}`;
+            if (info?.version) uiRender(version, () => uiText("Version {0}", info.version));
         } catch {
-            version.textContent = 'Standalone setup';
+            uiRender(version, () => uiText("Standalone setup"));
         }
     })();
 })();

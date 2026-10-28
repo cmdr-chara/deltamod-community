@@ -25,7 +25,29 @@
     }
 
     function localize(key, fallback, ...args) {
-        return root.Localization?.t?.(key, fallback, ...args) || fallback;
+        return root.Localization?.t?.(key, fallback, ...args)
+            ?? String(fallback).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    }
+
+    const uiText = (source, ...args) => root.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = value => root.Localization?.number?.(value) ?? String(value);
+
+    function fallbackReasonLabel(reason) {
+        const ownedReasons = {
+            'playback fallback': 'Playback fallback',
+            'repeated stalls on Linux WebKitGTK': 'Repeated stalls on Linux WebKitGTK',
+            'loop restart failed': 'The video loop could not restart.',
+            'playback rejected': 'Video playback was rejected.',
+            'load timeout': 'The video took too long to load.'
+        };
+        if (ownedReasons[reason]) return uiText(ownedReasons[reason]);
+        const dropped = /^excessive dropped frames \((\d+)\/(\d+)\) on Linux WebKitGTK$/.exec(reason);
+        if (dropped) return uiText('Excessive dropped frames ({0}/{1}) on Linux WebKitGTK', uiNumber(Number(dropped[1])), uiNumber(Number(dropped[2])));
+        const mediaError = /^media error (\d+|unknown)$/.exec(reason);
+        if (mediaError) return uiText('Media error {0}', mediaError[1] === 'unknown' ? uiText('Unknown') : mediaError[1]);
+        // Exception names and provider diagnostics are technical data, not UI copy.
+        return reason;
     }
 
     function polishMenuAudio() {
@@ -141,7 +163,7 @@
             ? localize(
                 'linux_rendering_fallback_active',
                 'Video fallback active for this theme: {0}',
-                fallbackReason
+                fallbackReasonLabel(fallbackReason)
             )
             : '';
         return true;

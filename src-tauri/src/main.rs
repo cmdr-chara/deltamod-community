@@ -4,6 +4,7 @@
 mod channels;
 mod controller;
 mod error;
+mod localization;
 mod profile_registry;
 mod provider_cache;
 mod state;
@@ -1118,7 +1119,8 @@ fn dispatch_domain(
     name: &str,
     data: &[Value],
 ) -> Result<Value, String> {
-    let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app);
+    let dialogs = deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(app)
+        .with_translator(crate::localization::text);
     if name == "gamebanana_downloadAllInCollection" {
         let token = channels::auth::token(state)?;
         return channels::import_download::restore_gamebanana_collection(
@@ -1285,9 +1287,14 @@ async fn backend_invoke(
     window: WebviewWindow,
     channel: String,
     data: Option<Value>,
+    locale: Option<String>,
 ) -> Result<Value, String> {
     if window.label() != "main" {
         return Err("TAURI_WINDOW_NOT_ALLOWED".to_owned());
+    }
+    if let Some(locale) = locale.as_deref() {
+        localization::set_language(locale);
+        controller::refresh_controller_menu(&app);
     }
     if channel.len() > error::MAX_CHANNEL_BYTES || !channel.is_ascii() {
         return Err(error::unavailable("unknown"));

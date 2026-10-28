@@ -1,4 +1,18 @@
 (() => {
+
+    // Only explicit app-owned messages enter localization; provider and user text remain literal.
+    const uiHost = typeof window === 'undefined' ? globalThis : window;
+    const uiText = (source, ...args) => uiHost.Localization?.text?.(source, ...args)
+        ?? String(source).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+    const uiNumber = (value, options) => uiHost.Localization?.number?.(value, options) ?? String(value);
+    const uiRender = (element, render, attribute) => {
+        if (!element) return element;
+        if (uiHost.Localization?.bindComputed && typeof element.setAttribute === 'function') return uiHost.Localization.bindComputed(element, render, attribute);
+        if (attribute) element.setAttribute(attribute, render());
+        else element.textContent = render();
+        return element;
+    };
+
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
     window._intervals = window._intervals || [];
@@ -29,6 +43,7 @@ const setInterval = (handler, delay, ...args) => {
         modIcon.src = imeta.path;
         modIcon.style.width = '32px';
         modIcon.style.height = '32px';
+        modIcon.alt = '';
         if (!mod.gamebanana.supports) {
             modIcon.style.filter = 'grayscale(100%)';
         }
@@ -44,7 +59,7 @@ const setInterval = (handler, delay, ...args) => {
         if (!mod.gamebanana.supports) {
             modInfoDiv.appendChild(document.createElement('br'));
             var unsupportedTag = document.createElement('span');
-            unsupportedTag.textContent = 'Only mods downloaded from GameBanana are supported';
+            uiRender(unsupportedTag, () => uiText("Only mods downloaded from GameBanana are supported"));
             unsupportedTag.style.color = 'rgba(255,255,255,0.5)';
             unsupportedTag.style.fontSize = '0.8em';
             unsupportedTag.style.marginLeft = '5px';
@@ -58,6 +73,7 @@ const setInterval = (handler, delay, ...args) => {
             checkboxTD.style.textAlign = 'center';
             var checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
+            uiRender(checkbox, () => uiText('Export {0}', mod.name), 'aria-label');
             checkbox.dataset.model = mod.gamebanana.model;
             checkbox.dataset.id = mod.gamebanana.id;
             checkbox.dataset.name = mod.name;
@@ -99,8 +115,8 @@ window.currentPageStack.exportMods = async function() {
 
     await invoke('gamebanana_importToCollection', [window._pageArguments.collectionId, selectedMods]);
 
-    await htmlAlert("Done", "The selected mods have been imported to the collection.", [{
-        text: "Ok",
+    await htmlAlert(uiText("Done"), uiText("The selected mods have been imported to the collection."), [{
+        text: uiText("Ok"),
         resolveWith: 'ok'
     }]);
 

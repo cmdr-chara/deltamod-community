@@ -20,7 +20,7 @@ async function openShop(page, options = {}) {
                 return invoke(channel, args);
             };
             window.htmlAlert = async (title, message) => {
-                window.__shop.alerts.push({ title, message });
+                window.__shop.alerts.push({ title: typeof title === 'function' ? title() : title, message: typeof message === 'function' ? message() : message });
                 return 'ok';
             };
             // Deterministically trigger the real pagination observer without viewport races.
@@ -51,7 +51,9 @@ async function openShop(page, options = {}) {
                 };
                 if (window.__shop.empty) payload._aRecords = [];
                 if (window.__shop.malformedPage === number) {
-                    payload._aRecords.push({ ...payload._aRecords[0], _idRow: 99, _aSubmitter: null });
+                    // A missing author now has a useful fallback; a non-record
+                    // still exercises atomic page publication on malformed data.
+                    payload._aRecords.push(null);
                 }
                 return { ok: true, result: { payload } };
             } };

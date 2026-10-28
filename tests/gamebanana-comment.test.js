@@ -39,7 +39,7 @@ describe('GameBanana comment responses', () => {
     const { runInNewContext } = require('node:vm');
     const page = readFileSync(require('node:path').join(__dirname, '../web/views/gamebanana-leave-comment/index.js'), 'utf8');
     const source = page.slice(page.indexOf('async function readGameBananaJson('), page.indexOf('function commentErrorMessage('));
-    const read = runInNewContext(source + '; readGameBananaJson');
+    const read = runInNewContext(source + '; readGameBananaJson', { t: (_key, fallback) => fallback });
     const response = text => ({ text: async () => text });
 
     it('parses clean JSON', async () => {
@@ -51,5 +51,31 @@ describe('GameBanana comment responses', () => {
     });
     it('reports a response with no JSON body', async () => {
         await expect(read(response('Warning: database offline'))).rejects.toThrow('unreadable');
+    });
+});
+
+describe('GameBanana comment display boundaries', () => {
+    const { readFileSync } = require('node:fs');
+    const { runInNewContext } = require('node:vm');
+    const page = readFileSync(require('node:path').join(__dirname, '../web/views/gamebanana-leave-comment/index.js'), 'utf8');
+    const urls = page.slice(page.indexOf('function safeGameBananaUrl('), page.indexOf('function commentPlainText('));
+    const safeUrl = runInNewContext(urls + '; safeGameBananaUrl', { URL });
+    const body = page.slice(page.indexOf('function commentPlainText('), page.indexOf('function commentTime('));
+    const plainText = runInNewContext(body + '; commentPlainText');
+
+    it('accepts only provider-owned HTTPS links and avatars', () => {
+        expect(safeUrl('https://gamebanana.com/members/1')).toBe('https://gamebanana.com/members/1');
+        expect(safeUrl('https://images.gamebanana.com/avatar.png', true)).toContain('images.gamebanana.com');
+        for (const value of ['javascript:alert(1)', 'https://gamebanana.com.evil.test/a', 'https://u:p@gamebanana.com/a', 'http://gamebanana.com/a']) {
+            expect(safeUrl(value)).toBe('');
+        }
+        expect(safeUrl('https://images.gamebanana.com/avatar.png')).toBe('');
+    });
+
+    it('keeps comment content as text while decoding ordinary markup and entities', () => {
+        expect(plainText('<p>Hello &lt;Kris&gt;<br>Stay &amp; kind.</p>')).toBe('Hello <Kris>\nStay & kind.\n');
+        expect(plainText('<img src=x onerror=alert(1)>hello')).toBe('hello');
+        expect(plainText(null)).toBe('');
+        expect(plainText('&#xD800; &#1114112;')).toBe('&#xD800; &#1114112;');
     });
 });

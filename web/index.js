@@ -1,3 +1,4 @@
+const shellText = (source, ...args) => window.Localization?.text(source, ...args) ?? source.replace(/\{(\d+)\}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
 /**
  * ==========================================
  * Deltamod Core Script
@@ -539,7 +540,7 @@ function playRoaringKnightTransition() {
     const overlay = document.createElement('div');
     overlay.id = 'theme-transition-overlay';
     overlay.className = 'theme-transition-overlay';
-    overlay.setAttribute('aria-label', 'Roaring Knight awakening');
+    window.Localization.bindTextAttribute(overlay, 'aria-label', 'Roaring Knight awakening');
 
     const blackout = document.createElement('span');
     blackout.className = 'theme-transition-blackout';
@@ -598,7 +599,7 @@ function playRoaringKnightTransition() {
     const skip = document.createElement('button');
     skip.id = 'theme-transition-skip';
     skip.className = 'theme-transition-skip';
-    skip.textContent = 'Skip · Esc';
+    window.Localization.bindText(skip, 'Skip · Esc');
     const finish = () => {
         clearThemeTransition();
         completeRoaringKnightAwakening();
@@ -1058,7 +1059,7 @@ async function makeGlyphs(jsonArr) {
         glyphIconElement.innerText = glyph.icon;
 
         var glyphDescElement = document.createElement('span');
-        glyphDescElement.innerText = glyph.description;
+        window.Localization.bindText(glyphDescElement, glyph.description);
 
         glyphContainer.appendChild(glyphIconElement);
         glyphContainer.appendChild(glyphDescElement);
@@ -1084,11 +1085,11 @@ async function reapplyHAStyles() {
  */
 async function promptLeaveCMode() {
     htmlAlert(
-        "Exit controller mode", 
-        "Are you sure you want to exit controller mode? If you exit controller mode, Deltamod will close.", 
+        shellText("Exit controller mode"),
+        shellText("Are you sure you want to exit controller mode? If you exit controller mode, Deltamod will close."),
         [
-            { text: "Yes", resolveWith: true },
-            { text: "No", resolveWith: false }
+            { text: shellText("Yes"), resolveWith: true },
+            { text: shellText("No"), resolveWith: false }
         ], 
         'stadia_controller'
     ).then(async (result) => {
@@ -1164,7 +1165,16 @@ async function htmlAlert(title, message, buttons, specialIcon = 'info') {
 
 /** Preserve the existing themed/aligned alert while fixing lifecycle and keyboard use. */
 async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
-    const choices = Array.isArray(buttons) && buttons.length ? buttons : [{ text: 'OK', resolveWith: 'ok' }];
+    const choices = Array.isArray(buttons) && buttons.length ? buttons : [{ text: () => shellText("OK"), resolveWith: 'ok' }];
+    const resolveText = value => String((typeof value === 'function' ? value() : value) ?? '');
+    const bindAlertText = (element, value) => {
+        // Literal strings may be provider diagnostics or user content. Only an
+        // explicit app-owned renderer opts into live localization.
+        element.dataset.userContent = '';
+        if (typeof value === 'function' && window.Localization?.bindComputed) {
+            window.Localization.bindComputed(element, () => resolveText(value));
+        } else element.textContent = resolveText(value);
+    };
     const has = (choice, key) => Object.prototype.hasOwnProperty.call(choice, key);
     const settle = async choice => {
         if (has(choice, 'rejectWith')) throw choice.rejectWith;
@@ -1176,7 +1186,10 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
     try {
         if (localStorage.getItem('alertAlignment') === 'Separate'
             && window.deltamodBackend.isCommandAvailable('htmlAlert_outwin')) {
-            const index = await window.deltamodBackend.invoke('htmlAlert_outwin', [title, message, choices]);
+            // The native contract needs labels and returns a choice index.
+            // Keep callbacks and settlement values in this renderer only.
+            const nativeChoices = choices.map(choice => ({ text: resolveText(choice.text) }));
+            const index = await window.deltamodBackend.invoke('htmlAlert_outwin', [resolveText(title), resolveText(message), nativeChoices]);
             const selected = choices[index];
             if (!selected) throw new Error('Alert closed without a selection');
             return await settle(selected);
@@ -1189,10 +1202,10 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
         const content = document.createElement('div');
         const heading = document.createElement('h1');
         heading.id = 'community-alert-title';
-        heading.textContent = title;
+        bindAlertText(heading, title);
         const copy = document.createElement('p');
         copy.id = 'community-alert-description';
-        copy.textContent = String(message);
+        bindAlertText(copy, message);
         copy.style.whiteSpace = 'pre-line';
         const controls = document.createElement('div');
         controls.className = 'alertButtons';
@@ -1233,7 +1246,7 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
                 choices.forEach(choice => {
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.textContent = choice.text;
+                    bindAlertText(button, choice.text);
                     button.addEventListener('click', () => close(choice));
                     controls.append(button);
                 });
@@ -1270,6 +1283,7 @@ async function htmlAlertRaw(title, message, buttons, specialIcon = 'info') {
             alertMain.hidden = true;
             alertMain.style.display = 'none';
             alertMsgR.style.animation = 'none';
+            window.Localization?.release?.(content);
             alertMsgR.replaceChildren();
             inertState.forEach(([node, inert]) => { node.inert = inert; });
             if (previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus({ preventScroll: true });
@@ -1296,11 +1310,11 @@ window.preloadAPI.onUpdateAvailable((info) => {
     window.ustack.updateInfo = info;
 
     htmlAlert(
-        'Update available', 
-        `A new version of Deltamod Community (${info.version}) is available for download. Do you wish to update?`,
+        shellText("Update available"),
+        shellText("A new version of Deltamod Community ({0}) is available. Download and install it?", info.version),
         [
-            { text: 'Yes', resolveWith: "a" },
-            { text: 'No', rejectWith: "a" }
+            { text: shellText("Yes"), resolveWith: "a" },
+            { text: shellText("No"), rejectWith: "a" }
         ], 
         'update'
     ).then(async () => {
@@ -1308,7 +1322,7 @@ window.preloadAPI.onUpdateAvailable((info) => {
             await window.deltamodBackend.invoke('start-update', []);
         } catch (error) {
             // Installation failure is not a user rejection of the initial offer.
-            window.deltamodUpdateNotice?.failure('The update did not finish. Check the update notice, then try again.');
+            window.deltamodUpdateNotice?.failure(shellText("The update did not finish. Check the update notice, then try again."));
             console.error('Update failed:', error);
         }
     }, async () => {
@@ -1335,7 +1349,7 @@ function sanitizeHTML(str) {
 }
 
 function formatBytes(bytes) {
-    if (!Number.isFinite(bytes) || bytes < 0) return 'an unknown amount of space';
+    if (!Number.isFinite(bytes) || bytes < 0) return shellText("Unknown space requirement");
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let value = bytes;
     let unit = 0;
@@ -1343,7 +1357,7 @@ function formatBytes(bytes) {
         value /= 1024;
         unit += 1;
     }
-    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    return `${window.Localization?.number(value, { maximumFractionDigits: unit === 0 ? 0 : 1 }) ?? value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 async function offerOfficialProfileImport() {
@@ -1354,11 +1368,11 @@ async function offerOfficialProfileImport() {
         }
 
         const choice = await htmlAlert(
-            'Import your Deltamod data',
-            `Deltamod ${summary.version || ''} was found with ${summary.installations} installation(s), ${summary.mods} mod(s), and ${summary.themes} custom theme(s). A safe Community copy needs ${formatBytes(summary.totalBytes)}. Official Deltamod will not be changed.`,
+            shellText("Import your Deltamod data"),
+            shellText("Deltamod {0} was found. Installations: {1}; mods: {2}; custom themes: {3}. A separate Community copy needs {4}. Official Deltamod data will remain unchanged.", summary.version || '', window.Localization.number(summary.installations), window.Localization.number(summary.mods), window.Localization.number(summary.themes), formatBytes(summary.totalBytes)),
             [
-                { text: 'Review and import', resolveWith: 'import' },
-                { text: 'Later', resolveWith: 'later' }
+                { text: shellText("Review and import"), resolveWith: 'import' },
+                { text: shellText("Later"), resolveWith: 'later' }
             ],
             'database'
         );
@@ -1480,8 +1494,8 @@ async function themeRefresh(refreshAudio = true) {
     if (runtimeLayout) {
         theme.background = theme.background || theme.icon;
         theme.mainSong = theme.mainSong || theme.music;
-        theme.description = theme.description || 'Custom theme';
-        theme.musicTrack = theme.musicTrack || (theme.mainSong ? 'Custom audio' : 'No custom audio');
+        theme.description = theme.description || shellText("Custom theme");
+        theme.musicTrack = theme.musicTrack || (theme.mainSong ? shellText("Custom audio") : shellText("No custom audio"));
         theme.color = theme.color || 'rgb(205, 68, 81)';
         theme.soulColor = theme.soulColor || '#FF0000';
     }
@@ -1709,7 +1723,8 @@ async function renderPage(name) {
     ) || title?.[1] || 'Deltamod Community';
     const pageTitleElement = document.getElementById('pageTitle');
     if (pageTitleElement) {
-        pageTitleElement.textContent = pageTitle;
+        pageTitleElement.removeAttribute('data-i18n');
+        window.Localization.bindText(pageTitleElement, title?.[1] || 'Deltamod Community');
     }
 
     // Extract Exclude Audio Tag
@@ -1873,7 +1888,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 if (!window.deltamodBackend) {
-    window.alert('This application cannot run in this environment.');
+    window.alert(shellText("This application cannot run in this environment."));
     window.close();
     window.location.href = 'about:blank';
 }
@@ -1908,8 +1923,11 @@ async function renderuser() {
         if (!fallback.isConnected) gbaccount.prepend(fallback);
     };
     const username = document.createElement('span');
-    username.textContent = String(gbuser?._sName || 'GameBanana user');
+    if (gbuser?._sName) username.textContent = String(gbuser._sName);
+    else window.Localization?.bindComputed(username, () => shellText("GameBanana user"));
     username.className = 'gamebanana-account-name';
+    username.dir = 'auto';
+    username.dataset.userContent = '';
     if (avatarUrl) {
         gbaccount.append(avatar, username);
     } else {
@@ -1946,6 +1964,7 @@ async function setupLanguageWheel() {
     const sectors = document.getElementById('language-wheel-sectors');
     const options = document.getElementById('language-wheel-options');
     const currentFlag = document.getElementById('language-wheel-current-flag');
+    const currentName = document.getElementById('language-wheel-current-name');
     const languages = await window.Localization.getLanguages();
     const optionButtons = [];
     const sectorPaths = [];
@@ -1972,7 +1991,7 @@ async function setupLanguageWheel() {
     );
 
     const wheelFlag = language => (
-        `assets/language-flags/${wheelFlagCodes[language.code]}.svg`
+        wheelFlagCodes[language.code] ? `assets/language-flags/${wheelFlagCodes[language.code]}.svg` : language.flag
     );
 
     const previewLanguage = language => {
@@ -1989,6 +2008,7 @@ async function setupLanguageWheel() {
         }
         currentFlag.src = wheelFlag(language);
         currentFlag.alt = '';
+        if (currentName) { currentName.textContent = language.name; currentName.lang = language.code; currentName.dir = 'auto'; }
         wheel.style.setProperty('--preview-angle', `${previewRotation}deg`);
         optionButtons.forEach(button => {
             button.classList.toggle('is-preview', button.dataset.language === language.code);
@@ -2120,17 +2140,19 @@ async function setupLanguageWheel() {
         button.className = 'language-wheel-option noScaleBTN';
         button.dataset.language = language.code;
         button.title = language.name;
+        button.lang = language.code;
+        button.dir = 'auto';
         button.setAttribute('aria-label', language.name);
         button.style.setProperty('--wheel-index', String(index));
-        button.style.setProperty('--wheel-button-x', `${125 + (Math.cos(buttonAngle) * buttonRadius)}px`);
-        button.style.setProperty('--wheel-button-y', `${123 + (Math.sin(buttonAngle) * buttonRadius)}px`);
+        button.style.setProperty('--wheel-button-x', `${145 + (Math.cos(buttonAngle) * buttonRadius)}px`);
+        button.style.setProperty('--wheel-button-y', `${145 + (Math.sin(buttonAngle) * buttonRadius)}px`);
 
         sector.classList.add('language-wheel-sector');
         sector.dataset.language = language.code;
         sector.style.fill = `url(#${patternId})`;
         sector.setAttribute('d', sectorPath(
-            -112.5 + angle + 1.4,
-            -67.5 + angle - 1.4
+            -90 - 180 / languages.length + angle + 1.4,
+            -90 + 180 / languages.length + angle - 1.4
         ));
 
         pattern.id = patternId;
@@ -2156,11 +2178,11 @@ async function setupLanguageWheel() {
         button.addEventListener('keydown', event => {
             if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
                 event.preventDefault();
-                focusRelativeOption(button, 1);
+                focusRelativeOption(button, event.key === 'ArrowRight' && document.documentElement.dir === 'rtl' ? -1 : 1);
             } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
                 event.preventDefault();
-                focusRelativeOption(button, -1);
-            } else if (event.key === 'Home') {
+                focusRelativeOption(button, event.key === 'ArrowLeft' && document.documentElement.dir === 'rtl' ? 1 : -1);
+            } else if (event.key === shellText("Home")) {
                 event.preventDefault();
                 optionButtons[0].focus();
             } else if (event.key === 'End') {
@@ -2185,6 +2207,11 @@ async function setupLanguageWheel() {
     });
     backdrop.addEventListener('click', () => closeWheel());
     window.addEventListener('keydown', event => {
+        if (event.key === 'Tab' && !wheel.hidden) {
+            const first = optionButtons[0], last = optionButtons.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
         if (event.key === 'Escape' && !wheel.hidden) {
             event.preventDefault();
             closeWheel();
@@ -2201,12 +2228,12 @@ async function setupLanguageWheel() {
  * ==========================================
  */
 (async function() {
-    bootProgress(0.03, 'Starting local runtime');
+    bootProgress(0.03, shellText("Starting local runtime"));
     await reapplyHAStyles();
-    bootProgress(0.09, 'Loading interface styles');
+    bootProgress(0.09, shellText("Loading interface styles"));
 
     cmode = await window.deltamodBackend.invoke('isCMode', []);
-    bootProgress(0.15, 'Checking controller mode');
+    bootProgress(0.15, shellText("Checking controller mode"));
 
     var ribbon = document.querySelectorAll('.sidebar-button');
     ribbon.forEach(r => {
@@ -2228,9 +2255,9 @@ async function setupLanguageWheel() {
     
     // Initialize Theme prior to initial page loads
     await themeRefresh(false); 
-    bootProgress(0.28, 'Applying active theme');
+    bootProgress(0.28, shellText("Applying active theme"));
     await setupLanguageWheel();
-    bootProgress(0.38, 'Preparing language services');
+    bootProgress(0.38, shellText("Preparing language services"));
 
     // Setup Controller Mode visual adjustments
     if (cmode) {
@@ -2240,18 +2267,18 @@ async function setupLanguageWheel() {
         document.querySelector('.maximize-button').style.display = 'none';
 
         makeGlyphs([
-            { icon: 'game_stick_left', description: "Move cursor" },
-            { icon: 'game_stick_right', description: "Scroll" },
-            { icon: 'cancel', description: "Click" },
-            { icon: 'square_circle', description: "Right click" },
+            { icon: 'game_stick_left', description: shellText("Move cursor") },
+            { icon: 'game_stick_right', description: shellText("Scroll") },
+            { icon: 'cancel', description: shellText("Click") },
+            { icon: 'square_circle', description: shellText("Right click") },
         ]);
 
         if (!localStorage.getItem('seenCModeAlert')) {
             localStorage.setItem('seenCModeAlert', 'true');
             htmlAlert(
-                "Controller mode enabled", 
-                "Controller mode is now enabled! Use Deltamod with your controller. Your left stick can help you move your mouse.", 
-                [{ text: "Ok" }], 
+                shellText("Controller mode enabled"),
+                shellText("Controller mode is now enabled! Use Deltamod with your controller. Your left stick can help you move your mouse."),
+                [{ text: shellText("Ok") }],
                 'stadia_controller'
             );
         }
@@ -2266,11 +2293,11 @@ async function setupLanguageWheel() {
                     return;
                 }
                 var res = await htmlAlert(
-                    "Controller mode",
-                    "It looks like you have a controller connected. Do you want to enable controller mode? Controller mode allows you to use Deltamod with your controller. Your left stick can help you move your mouse.",
+                    shellText("Controller mode"),
+                    shellText("It looks like you have a controller connected. Do you want to enable controller mode? Controller mode allows you to use Deltamod with your controller. Your left stick can help you move your mouse."),
                     [
-                        { text: "Yes", resolveWith: true },
-                        { text: "No", resolveWith: false }
+                        { text: shellText("Yes"), resolveWith: true },
+                        { text: shellText("No"), resolveWith: false }
                     ]
                 );
 
@@ -2282,13 +2309,13 @@ async function setupLanguageWheel() {
     }
 
     if (await offerOfficialProfileImport()) {
-        bootProgress(0.7, 'Waiting for profile import');
+        bootProgress(0.7, shellText("Waiting for profile import"));
         finishBoot();
         return;
     }
 
     var loaded = await window.deltamodBackend.invoke('loadedDeltarune',[]);
-    bootProgress(0.56, 'Finding installed games');
+    bootProgress(0.56, shellText("Finding installed games"));
 
     if (await window.deltamodBackend.invoke('fetchSharedVariable',["gb1click"]) === true) {
         await page('goc-dl');
@@ -2304,16 +2331,16 @@ async function setupLanguageWheel() {
             }
         }, 50);
     });
-    bootProgress(0.72, 'Reading mod sources');
+    bootProgress(0.72, shellText("Reading mod sources"));
 
     // Main App Branching Route
     if (loaded.loaded) {
         var available = await window.deltamodBackend.invoke('fireUpdate', []);
         console.log('Update check complete. Update available:', available);
-        bootProgress(0.84, 'Checking patch tools');
+        bootProgress(0.84, shellText("Checking patch tools"));
 
         var im = await invokeOptional('shouldGoIM', [], false);
-        bootProgress(0.9, 'Preparing file overlay');
+        bootProgress(0.9, shellText("Preparing file overlay"));
         if (im) {
             await page('installmanager');
         } else {
@@ -2332,7 +2359,7 @@ async function setupLanguageWheel() {
     }
 })().catch(error => {
     console.error('Deltamod initialization failed:', error);
-    window.DeltamodBoot?.fail('Continuing');
+    window.DeltamodBoot?.fail(shellText("Continuing"));
 });
 
 function closeAudio() {

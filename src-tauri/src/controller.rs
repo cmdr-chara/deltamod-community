@@ -37,6 +37,7 @@ pub struct ControllerMode {
     executable: std::path::PathBuf,
     registry: ProcessRegistry,
     process: Mutex<Option<OwnedProcess>>,
+    menu_labels: Mutex<Option<[String; 2]>>,
 }
 
 impl ControllerMode {
@@ -48,6 +49,7 @@ impl ControllerMode {
             executable: resources.join("tools").join("cmodeutil.exe"),
             registry: ProcessRegistry::default(),
             process: Mutex::new(None),
+            menu_labels: Mutex::new(None),
         }
     }
 
@@ -96,22 +98,61 @@ impl Drop for ControllerMode {
 }
 
 pub fn install_controller_exit_menu(window: &WebviewWindow) -> Result<(), &'static str> {
+    install_localized_controller_menu(window, &controller_menu_labels())
+}
+
+fn controller_menu_labels() -> [String; 2] {
+    [
+        crate::localization::text("Exit controller mode"),
+        crate::localization::text("View"),
+    ]
+}
+
+fn install_localized_controller_menu(
+    window: &WebviewWindow,
+    labels: &[String; 2],
+) -> Result<(), &'static str> {
     let app = window.app_handle();
     let exit = MenuItem::with_id(
         app,
         CONTROLLER_EXIT_MENU_ID,
-        "Exit Controller Mode",
+        &labels[0],
         true,
         Some(CONTROLLER_EXIT_ACCELERATOR),
     )
     .map_err(|_| "controller mode menu unavailable")?;
-    let view = Submenu::with_items(app, "View", true, &[&exit])
+    let view = Submenu::with_items(app, &labels[1], true, &[&exit])
         .map_err(|_| "controller mode menu unavailable")?;
     let menu = Menu::with_items(app, &[&view]).map_err(|_| "controller mode menu unavailable")?;
     window
         .set_menu(menu)
         .map_err(|_| "controller mode menu unavailable")?;
     Ok(())
+}
+
+// The renderer supplies the saved language after native window setup. Rebuild
+// this small, app-owned menu only when its labels change, retaining fixed IDs
+// and the exit accelerator. Ordinary backend calls do not replace the menu.
+pub fn refresh_controller_menu(app: &AppHandle) {
+    let Some(controller) = app.try_state::<ControllerMode>() else {
+        return;
+    };
+    if !controller.enabled() {
+        return;
+    }
+    let labels = controller_menu_labels();
+    let Ok(mut previous) = controller.menu_labels.lock() else {
+        return;
+    };
+    if previous.as_ref() == Some(&labels) {
+        return;
+    }
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if install_localized_controller_menu(&window, &labels).is_ok() {
+        *previous = Some(labels);
+    }
 }
 
 fn controller_menu_event_allowed(controller_enabled: bool, menu_id: &str) -> bool {
@@ -641,7 +682,8 @@ fn run_protocol_worker(app: AppHandle) {
                         let dialogs =
                             deltamod_tauri_os_adapters::tauri_adapter::TauriDialogBackend::new(
                                 &app,
-                            );
+                            )
+                            .with_translator(crate::localization::text);
                         let with_current_generation = |emit: &mut dyn FnMut()| {
                             protocol_state.emit_for_generation(generation, emit);
                         };
@@ -692,7 +734,7 @@ fn run_protocol_worker(app: AppHandle) {
 fn emit_protocol_failure(app: &AppHandle) {
     let _ = app.emit(
         "gplog",
-        json!({"log": PROTOCOL_FAILURE_MESSAGE, "percent": -1.0}),
+        json!({"log": crate::localization::text(PROTOCOL_FAILURE_MESSAGE), "percent": -1.0}),
     );
 }
 

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="gicons/sheet.css">
     <link rel="stylesheet" href="commons/base.css">
     <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="modules/localization.css">
     <link rel="stylesheet" href="modules/updater-notice.css">
     <link rel="stylesheet" href="linux-webkit-compat.css">
     <link rel="stylesheet" href="modules/seasonal-events.css">
@@ -28,7 +29,7 @@
         id="deltamod-boot-root"
         role="status"
         aria-live="polite"
-        aria-label="Starting Deltamod"
+        aria-label="Starting Deltamod" data-i18n-aria-label="shell_starting"
     ></div>
     <div
         id="deltamod-seasonal-layer"
@@ -71,20 +72,20 @@
     </div>
     <div class="topbar" style="display: flex; justify-content: space-between; align-items: center;">
         <div class="title" style="justify-content: left; -webkit-app-region: drag !important;">
-            <p id="pageTitle">Home</p>
+            <p id="pageTitle" data-i18n="shell_home">Home</p>
         </div>
         <div class="barbtns">
-            <button onclick="toggleMinimize()" class="bar-button minimize-button" title="Minimize" aria-label="Minimize">
+            <button onclick="toggleMinimize()" class="bar-button minimize-button" title="Minimize" data-i18n-title="shell_minimize" aria-label="Minimize" data-i18n-aria-label="shell_minimize">
                 <svg class="window-control-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     <path d="M3 11.5h10" />
                 </svg>
             </button>
-            <button onclick="toggleFullscreen()" class="bar-button maximize-button" title="Maximize" aria-label="Maximize">
+            <button onclick="toggleFullscreen()" class="bar-button maximize-button" title="Maximize" data-i18n-title="shell_maximize" aria-label="Maximize" data-i18n-aria-label="shell_maximize">
                 <svg class="window-control-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     <rect x="3.5" y="3.5" width="9" height="9" rx="1" />
                 </svg>
             </button>
-            <button onclick="closeCommunity()" class="bar-button close-button" title="Close" aria-label="Close">
+            <button onclick="closeCommunity()" class="bar-button close-button" title="Close" data-i18n-title="close" aria-label="Close" data-i18n-aria-label="close">
                 <svg class="window-control-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     <path d="m4 4 8 8M12 4l-8 8" />
                 </svg>
@@ -98,32 +99,32 @@
     </div>
     <div class="sidebar">
         <div class="sidebar-buttons">
-            <button class="sidebar-button" data-page="main" aria-label="Home">
+            <button class="sidebar-button" data-page="main" aria-label="Home" data-i18n-aria-label="shell_home">
                 <img src="sbar/main.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/main.png">
             </button>
 
-            <button class="sidebar-button" data-page="allmods" aria-label="Mod library">
+            <button class="sidebar-button" data-page="allmods" aria-label="Mod library" data-i18n-aria-label="shell_library">
                 <img src="sbar/allmods.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/allmods.png">
             </button>
 
-            <button class="sidebar-button" data-page="options" aria-label="Options">
+            <button class="sidebar-button" data-page="options" aria-label="Options" data-i18n-aria-label="options">
                 <img src="sbar/options.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/options.png">
             </button>
             
-            <button class="sidebar-button" data-page="installmanager" aria-label="Installation manager">
+            <button class="sidebar-button" data-page="installmanager" aria-label="Installation manager" data-i18n-aria-label="shell_installation_manager">
                 <img src="sbar/installmanager.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/installmanager.png">
             </button>
 
             <!-- JS should display this if user toggled GameBanana specific features -->
-            <button class="sidebar-button" id="shopRibbon" data-page="gamebanana-browse" aria-label="Mod Shop">
+            <button class="sidebar-button" id="shopRibbon" data-page="gamebanana-browse" aria-label="Mod Shop" data-i18n-aria-label="gamebananaBrowseTitle">
                 <img src="sbar/shop.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/shop.png">
             </button>
 
-            <button class="sidebar-button" style="display: none;" id="collectionsRibbon" data-page="collections" aria-label="Collections">
+            <button class="sidebar-button" style="display: none;" id="collectionsRibbon" data-page="collections" aria-label="Collections" data-i18n-aria-label="collections">
                 <img src="sbar/collections.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/collections.png">
             </button>
 
-            <button class="sidebar-button" data-page="credits" aria-label="Information and credits">
+            <button class="sidebar-button" data-page="credits" aria-label="Information and credits" data-i18n-aria-label="shell_credits">
                 <img src="sbar/credits.png" alt="" width="26" data-theme-sprite="accent" data-theme-sprite-source="sbar/credits.png">
             </button>
         </div>
@@ -158,9 +159,10 @@
         <div class="language-wheel-indicator" aria-hidden="true"></div>
         <div class="language-wheel-current" aria-live="polite">
             <img id="language-wheel-current-flag" src="langs/en/flag.png" alt="">
+            <bdi id="language-wheel-current-name"></bdi>
         </div>
     </div>
-    <div class="gamebanana-account" role="button" tabindex="0" aria-label="GameBanana account" title="GameBanana account" style="opacity: 0;"></div>
+    <div class="gamebanana-account" role="button" tabindex="0" aria-label="GameBanana account" data-i18n-aria-label="shell_account" title="GameBanana account" data-i18n-title="shell_account" style="opacity: 0;"></div>
     <div class="alertMain" hidden>
         <div class="alertMsg"></div>
     </div>

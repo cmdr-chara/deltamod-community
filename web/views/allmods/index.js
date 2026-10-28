@@ -3,7 +3,21 @@ const pageTable = document.getElementById('modlist');
 pageTable.closest('table').setAttribute('aria-busy', 'true');
 const loadArtwork = window.FrontendRefinements.artworkLoader();
 const t = (key, fallback, ...args) =>
-    window.Localization?.t(key, fallback, ...args) ?? fallback;
+    window.Localization?.t(key, fallback, ...args) ?? String(fallback).replace(/{(\d+)}/g, (match, index) => args[index] === undefined ? match : String(args[index]));
+
+
+const uiRender = (element, render, attribute) => {
+    if (!element) return element;
+    if (window.Localization?.bindComputed) return window.Localization.bindComputed(element, render, attribute);
+    if (attribute) element.setAttribute(attribute, render());
+    else element.textContent = render();
+    return element;
+};
+const uiTooltip = (target, render, options = {}) => {
+    const copy = document.createElement('span');
+    uiRender(copy, render);
+    return tippy(target, { ...options, content: copy, onShow: () => { uiRender(copy, render); } });
+};
 
 const setInterval = (handler, delay, ...args) => {
     const interval = window.setInterval(handler, delay, ...args);
@@ -34,7 +48,10 @@ function purify(text) {
 
 function setIconText(element, iconName, text, size = 'small') {
     element.innerHTML = icon(iconName, size);
-    element.appendChild(document.createTextNode(` ${String(text ?? '')}`));
+    const label = document.createElement('span');
+    if (typeof text === 'function') uiRender(label, () => ' ' + text());
+    else label.textContent = ' ' + String(text ?? '');
+    element.appendChild(label);
 }
 
 const gameInfo = new Map();
@@ -65,7 +82,7 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
         modImage.src = window.deltamodBackend.assetUrl('app', 'web/img/mod-placeholder.png');
     };
     const modTitle = document.createElement('span');
-    modTitle.textContent = String(mod.name || t('allmods_unnamed', 'Unnamed mod'));
+    uiRender(modTitle, () => String(mod.name || t('allmods_unnamed', 'Unnamed mod')));
     titleSpan.append(modImage, modTitle);
     titleSpan.style.display = 'flex';
     titleSpan.style.alignItems = 'center';
@@ -111,7 +128,7 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
     sizeSpan.className = 'calibri';
     sizeSpan.style.fontSize = 'smaller';
     sizeSpan.style.color = '#888';
-    setIconText(sizeSpan, 'hard_disk', t('allmods_size', '{0} MB', mod.size));
+    setIconText(sizeSpan, 'hard_disk', () => t('allmods_size', '{0} MB', mod.size));
     sizeSpan.id = `modsize-${mod.uid}`;
     modNameContainer.appendChild(sizeSpan);
 
@@ -122,7 +139,7 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
     idSpan.className = 'calibri';
     idSpan.style.fontSize = 'smaller';
     idSpan.style.color = '#888';
-    setIconText(idSpan, 'sell', mod.packageID == 'und.und.und'
+    setIconText(idSpan, 'sell', () => mod.packageID == 'und.und.und'
         ? t('allmods_no_id', 'No ID was specified.')
         : mod.packageID);
     idSpan.id = `modid-${mod.uid}`;
@@ -158,7 +175,7 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
         variantSpan.className = 'calibri';
         variantSpan.style.fontSize = 'smaller';
         variantSpan.style.color = '#888';
-        setIconText(variantSpan, 'stack', t('allmods_variants', 'Mod has {0} variants', mod.variants.length));
+        setIconText(variantSpan, 'stack', () => t('allmods_variants', 'Mod has {0} variants', mod.variants.length));
         variantSpan.id = `modvariant-${mod.uid}`;
         modNameContainer.appendChild(variantSpan);
     }
@@ -174,7 +191,7 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
     setIconText(
         compatSpan,
         comp ? 'check' : 'error',
-        comp
+        () => comp
             ? t('allmods_compatible', 'Compatible with current version')
             : t('allmods_incompatible', 'Incompatible: {0}', mod.incompatibilityReason)
     );
@@ -194,7 +211,9 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
         banana.alt = '';
         banana.width = 15;
         banana.height = 15;
-        gbSpan.append(banana, document.createTextNode(` ${t('allmods_gamebanana', 'Installed through GameBanana')}`));
+        const sourceLabel = document.createElement('span');
+        uiRender(sourceLabel, () => ' ' + t('allmods_gamebanana', 'Installed through GameBanana'));
+        gbSpan.append(banana, sourceLabel);
         gbSpan.id = `modgb-${mod.uid}`;
         modNameContainer.appendChild(gbSpan);
     }
@@ -208,15 +227,15 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
         actionContainer.appendChild(bdiv);
 
         const exploreModButton = document.createElement('button');
-        exploreModButton.title = t('open_mod_folder', 'Open mod folder');
-        exploreModButton.setAttribute('aria-label', exploreModButton.title);
+        uiRender(exploreModButton, () => t('open_mod_folder', 'Open mod folder'), 'title');
+        uiRender(exploreModButton, () => exploreModButton.title, 'aria-label');
         exploreModButton.onclick = () => window.deltamodBackend.invoke('openModFolder', [mod.folder]);
         exploreModButton.innerHTML = icon('folder_eye', '20px');
         bdiv.appendChild(exploreModButton);
 
         const deleteModButton = document.createElement('button');
-        deleteModButton.title = t('delete_mod', 'Delete mod');
-        deleteModButton.setAttribute('aria-label', deleteModButton.title);
+        uiRender(deleteModButton, () => t('delete_mod', 'Delete mod'), 'title');
+        uiRender(deleteModButton, () => deleteModButton.title, 'aria-label');
         deleteModButton.onclick = () => {
             window.deltamodBackend.invoke('removeMod', [mod.folder]);
         };
@@ -224,8 +243,8 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
         bdiv.appendChild(deleteModButton);
 
         const gbModButton = document.createElement('button');
-        gbModButton.title = t('gb_comment', 'Comments');
-        gbModButton.setAttribute('aria-label', gbModButton.title);
+        uiRender(gbModButton, () => t('gb_comment', 'Comments'), 'title');
+        uiRender(gbModButton, () => gbModButton.title, 'aria-label');
             gbModButton.onclick = () => {
                 window._pageArguments = {
                     id: mod.gamebanana.id,
@@ -237,8 +256,8 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
             bdiv.appendChild(gbModButton);
 
         const likeBtn = document.createElement('button');
-        likeBtn.title = t('gb_like', 'Like mod');
-        likeBtn.setAttribute('aria-label', likeBtn.title);
+        uiRender(likeBtn, () => t('gb_like', 'Like mod'), 'title');
+        uiRender(likeBtn, () => likeBtn.title, 'aria-label');
             likeBtn.onclick = async () => {
                 let res = await window.deltamodBackend.invoke('gbLikeMod',[mod.gamebanana.model, mod.gamebanana.id]);
                     if (res.status == 200) {
@@ -266,14 +285,10 @@ async function createMod(mod, compatible, loggedIn, modListElement) {
             likeBtn.innerHTML = icon('mood_heart', '20px');
             bdiv.appendChild(likeBtn);
 
-            tippy(likeBtn, {
-                content: t('allmods_like_tooltip', 'Like this mod on GameBanana'),
-            });
-            tippy(gbModButton, {
-                content: loggedIn
+            uiTooltip(likeBtn, () => t('allmods_like_tooltip', 'Like this mod on GameBanana'));
+            uiTooltip(gbModButton, () => loggedIn
                     ? t('allmods_comment_leave', 'Leave a comment on GameBanana')
-                    : t('allmods_comment_view', 'View the GameBanana comments for this mod'),
-            });
+                    : t('allmods_comment_view', 'View the GameBanana comments for this mod'));
 
             likeBtn.disabled = !mod.gamebanana.supports || !loggedIn;
             gbModButton.disabled = !mod.gamebanana.supports;
@@ -300,7 +315,7 @@ async function createErroringMods(errors) {
         element.className = "error-holder";
 
         const modId = document.createElement("span");
-        modId.textContent = t('allmods_mod_id', "Mod ID '{0}'", String(err.mod || ''));
+        uiRender(modId, () => t('allmods_mod_id', "Mod ID '{0}'", String(err.mod || '')));
         modId.style.fontSize = '20px';
         modId.style.color = '#888';
 
@@ -316,7 +331,7 @@ async function createErroringMods(errors) {
         selectSpan.className = 'calibri';
         selectSpan.style.marginTop = '18px';
         selectSpan.style.display = 'block';
-        selectSpan.innerText = t('modFail_howtoproceed', "How do you want to proceed?");
+        uiRender(selectSpan, () => t('modFail_howtoproceed', "How do you want to proceed?"));
         
 
         const actionRow = document.createElement("div");
@@ -324,12 +339,12 @@ async function createErroringMods(errors) {
         {
             // Action Row
             const exploreBtn = document.createElement("button");
-            exploreBtn.innerText = t('open_mod_folder', "Open mod folder");
+            uiRender(exploreBtn, () => t('open_mod_folder', "Open mod folder"));
             exploreBtn.onclick = () => window.deltamodBackend.invoke("openModFolder", [err.mod]);
             actionRow.appendChild(exploreBtn);
 
             const deleteBtn = document.createElement("button");
-            deleteBtn.innerText = t('delete_mod', "Delete mod");
+            uiRender(deleteBtn, () => t('delete_mod', "Delete mod"));
             deleteBtn.onclick = () => window.deltamodBackend.invoke("removeMod", [err.mod]);
             actionRow.appendChild(deleteBtn);
         }
@@ -403,11 +418,11 @@ async function createErroringMods(errors) {
             rew();
             createErroringMods(errors);
         };
-        errorBanner.children[0].innerText = t(
+        uiRender(errorBanner.children[0], () => t(
             'modFail_bannerTitle',
             '{0} mod(s) failed to load',
             errors.length
-        );
+        ));
         errorBanner.style.display = "inherit";
     } else errorBanner.style.display = "none";
 
@@ -428,11 +443,11 @@ async function createErroringMods(errors) {
         const copy = document.createElement('div');
         copy.className = 'empty-state-copy';
         const heading = document.createElement('h2');
-        heading.innerText = modList.length === 0
+        uiRender(heading, () => modList.length === 0
             ? t('allmods_empty_title', 'No installed mods yet')
-            : t('allmods_no_installation_match', 'No mods match this installation');
+            : t('allmods_no_installation_match', 'No mods match this installation'));
         const description = document.createElement('p');
-        description.innerText = modList.length === 0
+        uiRender(description, () => modList.length === 0
             ? t(
                 'allmods_empty_desc',
                 'Packages you download or import will stay visible here, even when they are not enabled in the current patch list.'
@@ -440,18 +455,18 @@ async function createErroringMods(errors) {
             : t(
                 'allmods_choose_installation',
                 'Choose another installation above or return to All installations.'
-            );
+            ));
         copy.append(heading, description);
 
         if (modList.length === 0) {
             const actions = document.createElement('div');
             actions.className = 'empty-state-actions';
             const shopButton = document.createElement('button');
-            shopButton.innerText = t('browse_mod_shop', 'Browse Mod Shop');
+            uiRender(shopButton, () => t('browse_mod_shop', 'Browse Mod Shop'));
             shopButton.onclick = () => page('gamebanana-browse');
             const importButton = document.createElement('button');
             importButton.className = 'secondary-action';
-            importButton.innerText = t('import_mod_package', 'Import mod package');
+            uiRender(importButton, () => t('import_mod_package', 'Import mod package'));
             importButton.onclick = () => window.deltamodBackend.invoke('importMod', []);
             actions.append(shopButton, importButton);
             copy.appendChild(actions);

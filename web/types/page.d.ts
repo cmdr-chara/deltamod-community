@@ -13,10 +13,10 @@ declare global {
     function page(name: string): Promise<void>;
 
     function htmlAlert(
-        title: string,
-        message: string,
+        title: string | (() => string),
+        message: string | (() => string),
         buttons: {
-            text: string
+            text: string | (() => string)
             resolveWith?: string,
             rejectWith?: string,
             onClick?: any, // TODO Figure out what type this is supposed to be cause i genuinely have no clue

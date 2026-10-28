@@ -2788,6 +2788,181 @@ name = "Test"
 
     #[cfg(any(unix, windows))]
     #[test]
+    fn vanilla_launch_restores_tracked_files_before_direct_or_steam_launch() {
+        for legacy in [false, true] {
+            for steam in [false, true] {
+                let fixture = LifecyclePatchFixture::new();
+                fixture.add_mod("data", "data.win", b"modded game");
+                fixture.add_mod("marker", "marker.txt", b"temporary marker");
+                if legacy {
+                    fixture
+                        .runtime()
+                        .patch(
+                            &["data".into(), "marker".into()],
+                            "legacy-session",
+                            |_| {},
+                            || false,
+                        )
+                        .unwrap();
+                } else {
+                    fixture
+                        .apply(&["data", "marker"], "modded-session")
+                        .unwrap();
+                }
+                assert_eq!(fixture.read("data.win"), b"modded game");
+                let (game, launches, game_store) = vanilla_launch_probe(&fixture, steam);
+                let stored_choices = fs::read(&game_store).unwrap();
+                let reservation = game.reserve_launch().unwrap();
+                assert!(fixture
+                    .runtime()
+                    .patch_and_run(
+                        &[],
+                        "competing-vanilla",
+                        &fixture.lifecycle,
+                        &game,
+                        |_| {},
+                        || false,
+                    )
+                    .is_err());
+                assert_eq!(fixture.read("data.win"), b"modded game");
+                assert_eq!(launches.load(std::sync::atomic::Ordering::SeqCst), 0);
+                drop(reservation);
+                fixture
+                    .runtime()
+                    .patch_and_run(
+                        &[],
+                        "vanilla-session",
+                        &fixture.lifecycle,
+                        &game,
+                        |_| {},
+                        || false,
+                    )
+                    .unwrap();
+                fixture.assert_originals();
+                fixture.assert_absent("marker.txt");
+                assert_eq!(launches.load(std::sync::atomic::Ordering::SeqCst), 1);
+                assert_eq!(fs::read(game_store).unwrap(), stored_choices);
+            }
+        }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn vanilla_launch_stops_when_recovery_cannot_verify_current_files() {
+        let fixture = LifecyclePatchFixture::new();
+        fixture.add_mod("data", "data.win", b"modded game");
+        fixture.apply(&["data"], "modded-session").unwrap();
+        fs::write(fixture.root.path().join("game/data.win"), b"external edit").unwrap();
+        let (game, launches, _) = vanilla_launch_probe(&fixture, false);
+        assert!(fixture
+            .runtime()
+            .patch_and_run(
+                &[],
+                "blocked-vanilla",
+                &fixture.lifecycle,
+                &game,
+                |_| {},
+                || false,
+            )
+            .is_err());
+        assert_eq!(fixture.read("data.win"), b"external edit");
+        assert_eq!(launches.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(game.reserve_launch().is_ok());
+    }
+
+    #[cfg(any(unix, windows))]
+    fn vanilla_launch_probe(
+        fixture: &LifecyclePatchFixture,
+        steam: bool,
+    ) -> (
+        GameRuntime,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        PathBuf,
+    ) {
+        use deltamod_updater_launch_runtime::{
+            ChildProcess, GameRuntimeConfig, HostPlatform, LaunchError, LaunchSpec,
+            NoopGameLifecycle, ProcessSpawner, SteamError, SteamOpener, SteamUri,
+        };
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct FinishedChild;
+        impl ChildProcess for FinishedChild {
+            fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
+                #[cfg(unix)]
+                use std::os::unix::process::ExitStatusExt;
+                #[cfg(windows)]
+                use std::os::windows::process::ExitStatusExt;
+                Ok(std::process::ExitStatus::from_raw(0))
+            }
+            fn kill(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        struct Probe {
+            game_root: PathBuf,
+            launches: Arc<AtomicUsize>,
+            steam: bool,
+        }
+        impl Probe {
+            fn inspect(&self) {
+                assert_eq!(
+                    fs::read(self.game_root.join("data.win")).unwrap(),
+                    b"original game"
+                );
+                assert!(!self.game_root.join("marker.txt").exists());
+                self.launches.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        impl ProcessSpawner for Probe {
+            fn spawn(&self, _: &LaunchSpec) -> Result<Box<dyn ChildProcess>, LaunchError> {
+                assert!(!self.steam);
+                self.inspect();
+                Ok(Box::new(FinishedChild))
+            }
+        }
+        impl SteamOpener for Probe {
+            fn open(&self, _: &SteamUri) -> Result<(), SteamError> {
+                assert!(self.steam);
+                self.inspect();
+                Ok(())
+            }
+        }
+        let game_root = fixture.root.path().join("game");
+        fs::write(game_root.join("runner.exe"), b"fixture runner").unwrap();
+        let games = fixture.root.path().join("games");
+        fs::create_dir(&games).unwrap();
+        fs::write(games.join("game.json"), serde_json::to_vec(&serde_json::json!({
+            "id":"test.game", "platforms":{"win32":{"executable":"runner.exe","dataFiles":["data.win"]}}
+        })).unwrap()).unwrap();
+        let game_store = fixture.root.path().join("game-store.json");
+        fs::write(
+            &game_store,
+            serde_json::to_vec(&serde_json::json!({
+                "gamePid":"test.game", "gamePath":game_root, "gamePlatform":"win32",
+                "isSteam":steam, "steamAppId":"391540", "enabledMods":["data", "marker"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let launches = Arc::new(AtomicUsize::new(0));
+        let probe = Arc::new(Probe {
+            game_root,
+            launches: launches.clone(),
+            steam,
+        });
+        let game = GameRuntime::with_adapters(
+            GameRuntimeConfig::new(games, &game_store, HostPlatform::Win32),
+            probe.clone(),
+            probe,
+            Arc::new(NoopGameLifecycle),
+        );
+        (game, launches, game_store)
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
     fn lifecycle_changing_targets_preserves_originals_after_reopen() {
         let fixture = LifecyclePatchFixture::new();
         fixture.add_mod("options", "options.ini", b"modded options");
