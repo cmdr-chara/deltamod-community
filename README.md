@@ -46,7 +46,7 @@ Deltamod Community keeps each mod setup organized and gives you a safer path bac
 - **Keep setups separate.** Use installations, profiles, and collections instead of repeatedly moving game files by hand.
 - **Patch with recovery in mind.** Supported operations use staging, verification, and rollback paths before publishing changes to a game installation.
 - **Understand what is installed.** Inspect mod health, versions, files, conflicts, and operation history from the Installed Mods view.
-- **Use the platform you already have.** Native packages are available for Windows, Linux, Intel Mac, and Apple Silicon Mac.
+- **Use the platform you already have.** Current releases provide native packages for Windows and Linux. macOS packaging is paused; previous macOS releases remain available.
 
 You do **not** need Node.js, Rust, Git, or other development tools to use the app.
 
@@ -57,9 +57,9 @@ Get the newest **published stable** build from [GitHub Releases](https://github.
 | Your computer | Asset in the stable release |
 | --- | --- |
 | Windows x64 (Intel or AMD) | `Deltamod.Community.Setup.exe` |
-| macOS Apple Silicon (M1 or newer) | `Deltamod.Community_<version>_aarch64.dmg` |
-| macOS Intel | `Deltamod.Community_<version>_x64.dmg` |
 | Debian/Ubuntu/Linux Mint x64 | `Deltamod.Community_<version>_amd64.deb` |
+
+Current releases include Windows x64 and Linux x64 only. macOS users should keep their existing build or use a previous macOS release; the current updater manifest offers no macOS update.
 
 Replace `<version>` with the version displayed in the selected release. Windows uses a version-independent branded installer name.
 
@@ -70,10 +70,10 @@ Replace `<version>` with the version displayed in the selected release. Windows 
 </p>
 
 > [!TIP]
-> Most players need only one `.exe`, `.dmg`, or `.deb`. The `.json` evidence files, updater signatures, checksum manifests, tool-source archives, and GitHub-generated source archives are not installers. Preview builds are separate prereleases and are not served by the stable updater.
+> Most players need only one `.exe` or `.deb`. The `.json` evidence files, updater signatures, checksum manifests, tool-source archives, and GitHub-generated source archives are not installers. Preview builds are separate prereleases and are not served by the stable updater.
 
 > [!WARNING]
-> Stable Windows and macOS **updater packages** use mandatory Tauri updater signatures, but there is no Authenticode publisher certificate, Apple Developer ID signature, or macOS notarization. Windows SmartScreen and macOS Gatekeeper warnings may appear. Verify `SHA256SUMS.txt` and available GitHub attestations. A checksum verifies file integrity, not publisher identity. Linux `.deb` updates are manual.
+> Stable Windows **updater packages** use mandatory Tauri updater signatures, but there is no Authenticode publisher certificate. Windows SmartScreen warnings may appear. Verify `SHA256SUMS.txt` and available GitHub attestations. A checksum verifies file integrity, not publisher identity. Linux `.deb` updates are manual.
 
 <details>
 <summary><strong>Installation and checksum help</strong></summary>
@@ -86,7 +86,7 @@ Replace `<version>` with the version displayed in the selected release. Windows 
 
 Windows SmartScreen may show **Windows protected your PC**. After verifying the download, choose **More info → Run anyway** only if you decide to proceed.
 
-### macOS
+### macOS (previous releases only)
 
 1. Check **Apple menu → About This Mac** to determine your Mac's processor.
 2. Download the matching DMG and verify its hash against `SHA256SUMS.txt`.

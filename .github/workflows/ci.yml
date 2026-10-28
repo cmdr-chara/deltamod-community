@@ -83,10 +83,6 @@ jobs:
             target: x86_64-pc-windows-msvc
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-26
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
@@ -197,11 +193,11 @@ jobs:
           cargo test --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml 2>&1 | tee ci-results/tauri-tests.log
       - name: Install Playwright Chromium
         timeout-minutes: 5
-        if: runner.os == 'macOS'
-        run: node scripts/retry-command.js --label "Playwright Chromium installation" -- npx playwright install chromium
+        if: runner.os == 'Linux'
+        run: node scripts/retry-command.js --label "Playwright Chromium installation" -- npx playwright install --with-deps chromium
       - name: Renderer and Tauri browser E2E
         id: renderer_e2e
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         env:
           PLAYWRIGHT_JUNIT_OUTPUT_FILE: ci-results/playwright.xml
         run: npm run test:e2e -- --reporter=line,junit

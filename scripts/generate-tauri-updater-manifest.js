@@ -105,7 +105,14 @@ function artifactMatchesVersion(name, version) {
     return new RegExp(`(?:^|[_ -])${escaped}(?:_|-(?=(?:x86_64|x64|amd64|aarch64|arm64)(?:[_ .-]|$)))`).test(name);
 }
 
-function generate(directory, tag, expectedVersion = null) {
+const RELEASE_PROFILES = Object.freeze({
+    all: Object.freeze(['windows-x86_64', 'darwin-x86_64', 'darwin-aarch64']),
+    'windows-linux': Object.freeze(['windows-x86_64'])
+});
+
+function generate(directory, tag, expectedVersion = null, profile = 'all') {
+    const requiredTargets = Object.hasOwn(RELEASE_PROFILES, profile) ? RELEASE_PROFILES[profile] : null;
+    if (!requiredTargets) throw new Error(`Unknown release platform profile: ${profile}`);
     const match = /^community-v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tag);
     const version = expectedVersion || (match ? match.slice(1).join('.') : null);
     if (!version || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
@@ -125,6 +132,7 @@ function generate(directory, tag, expectedVersion = null) {
         }
         const target = updaterTarget(artifact);
         if (!target) throw new Error(`Unsupported signed updater artifact: ${path.basename(artifact)}`);
+        if (!requiredTargets.includes(target)) throw new Error(`Updater target is outside release profile ${profile}: ${target}`);
         if (platforms[target]) throw new Error(`Duplicate signed updater target: ${target}`);
         const artifactStat = fs.lstatSync(artifact);
         if (!artifactStat.isFile() || artifactStat.isSymbolicLink()) {
@@ -144,7 +152,7 @@ function generate(directory, tag, expectedVersion = null) {
             url: `${RELEASE_BASE}/${tag}/${encodeURIComponent(name)}`
         };
     }
-    for (const target of ['windows-x86_64', 'darwin-x86_64', 'darwin-aarch64']) {
+    for (const target of requiredTargets) {
         if (!platforms[target]) throw new Error(`Missing signed updater target: ${target}`);
     }
     if (Object.keys(platforms).some(target => target.startsWith('linux-'))) {
@@ -162,10 +170,11 @@ function main() {
     const tag = process.argv[3];
     const output = process.argv[4] || path.join(directory || '', 'latest.json');
     const version = process.argv[5] || null;
+    const profile = process.argv[6] || 'all';
     if (!directory || !tag) {
-        throw new Error('Usage: generate-tauri-updater-manifest <artifact-directory> <release-tag> [output] [version]');
+        throw new Error('Usage: generate-tauri-updater-manifest <artifact-directory> <release-tag> [output] [version] [all|windows-linux]');
     }
-    const manifest = generate(path.resolve(directory), tag, version);
+    const manifest = generate(path.resolve(directory), tag, version, profile);
     fs.writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     console.log(`Generated signed updater metadata for ${Object.keys(manifest.platforms).length} targets.`);
 }

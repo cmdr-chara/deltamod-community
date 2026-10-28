@@ -225,17 +225,6 @@ jobs:
             artifact: linux-deb
             bundles: deb
             smoke_executable: src-tauri/target/x86_64-unknown-linux-gnu/release/deltamod-tauri-shell
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            artifact: macos-x64-dmg
-            bundles: app,dmg
-            smoke_executable: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Deltamod Community.app/Contents/MacOS/Deltamod Community
-          # macOS 14 retires November 2, 2026; use the tested arm64 CI image.
-          - os: macos-26
-            target: aarch64-apple-darwin
-            artifact: macos-arm64-dmg
-            bundles: app,dmg
-            smoke_executable: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Deltamod Community.app/Contents/MacOS/Deltamod Community
     runs-on: ${{ matrix.os }}
     env:
       RUST_TARGET: ${{ matrix.target }}
@@ -629,21 +618,28 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
-        run: node scripts/generate-tauri-updater-manifest.js release-artifacts "$RELEASE_TAG" release-artifacts/latest.json "$RELEASE_VERSION"
+        run: node scripts/generate-tauri-updater-manifest.js release-artifacts "$RELEASE_TAG" release-artifacts/latest.json "$RELEASE_VERSION" windows-linux
       - name: Prepare SHA-256 manifest
         shell: bash
         run: |
+          set -euo pipefail
           mapfile -d '' artifacts < <(find release-artifacts -type f -print0)
           if [ "${{ needs.validate.outputs.unsigned_preview }}" = true ]; then
-            test "${#artifacts[@]}" -eq 18
+            test "${#artifacts[@]}" -eq 10
             test "$(find release-artifacts -type f -name '*.exe' | wc -l)" -eq 1
             test "$(find release-artifacts -type f -name '*.deb' | wc -l)" -eq 1
-            test "$(find release-artifacts -type f -name '*.dmg' | wc -l)" -eq 2
+            test "$(find release-artifacts -type f -name '*.dmg' | wc -l)" -eq 0
             test "$(find release-artifacts -type f -name '*.sig' | wc -l)" -eq 0
             test ! -e release-artifacts/latest.json
           else
-            test "${#artifacts[@]}" -eq 25
+            test "${#artifacts[@]}" -eq 13
+            test "$(find release-artifacts -type f -name '*.exe' | wc -l)" -eq 2
+            test "$(find release-artifacts -type f -name '*.deb' | wc -l)" -eq 1
+            test "$(find release-artifacts -type f -name '*.sig' | wc -l)" -eq 1
+            test -s release-artifacts/latest.json
           fi
+          test "$(find release-artifacts -type f -name '*.dmg' | wc -l)" -eq 0
+          test "$(find release-artifacts -type f -name '*.app.tar.gz*' | wc -l)" -eq 0
           (
             cd release-artifacts
             while IFS= read -r -d '' artifact; do
@@ -683,7 +679,7 @@ jobs:
           cat > release-notes.md <<EOF
           # Deltamod Community ${RELEASE_VERSION} unsigned Tauri preview
 
-          **Warning:** These Tauri packages are intentionally unsigned and the macOS builds are not notarized. Windows SmartScreen and macOS Gatekeeper warnings are expected.
+          **Warning:** These Tauri packages are intentionally unsigned. Windows SmartScreen warnings are expected. This release includes Windows and Linux packages only.
 
           This is a manual-download prerelease from commit \`${GITHUB_SHA}\`. Automatic updates are disabled for these artifacts: the release contains no \`latest.json\` and no Tauri updater signatures.
 
@@ -698,9 +694,8 @@ jobs:
           set -euo pipefail
           {
             printf '\n## Signing and download verification\n\n'
-            printf '%s\n' 'Windows and macOS updater packages carry mandatory Tauri updater signatures. Linux .deb installation is manual. SHA256SUMS.txt checks file integrity; GitHub attestations identify the build workflow.'
+            printf '%s\n' 'Windows updater packages carry mandatory Tauri updater signatures. This release includes Windows and Linux packages only. Linux .deb installation is manual. SHA256SUMS.txt checks file integrity; GitHub attestations identify the build workflow.'
             printf '\n%s\n' '**Windows:** No Authenticode publisher signing is used. SmartScreen or unknown-publisher warnings are expected.'
-            printf '\n%s\n' '**macOS:** Builds are ad-hoc signed, not Developer ID signed or notarized. Gatekeeper may block the first launch; approve this specific app in Privacy & Security after verifying the download. Do not disable Gatekeeper globally.'
           } >> release-notes.md
       - name: Record unsigned release validation
         if: needs.validate.outputs.validation == 'true'
@@ -711,7 +706,7 @@ jobs:
         run: |
           set -euo pipefail
           test ! -e release-artifacts/latest.json
-          printf '### Release validation\n\n- Candidate: `%s`\n- Version: `%s`\n- Windows/Linux/Intel macOS/Apple Silicon packages passed install and smoke validation.\n- Artifacts are intentionally unsigned and were not published.\n' \
+          printf '### Release validation\n\n- Candidate: `%s`\n- Version: `%s`\n- Windows/Linux packages passed install and smoke validation.\n- Artifacts are intentionally unsigned and were not published.\n' \
             "$CANDIDATE_SHA" "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload release-validation manifest
         if: needs.validate.outputs.validation == 'true'
@@ -734,7 +729,7 @@ jobs:
         shell: bash
         run: |
           mapfile -d '' artifacts < <(find release-artifacts -type f -print0)
-          test "${#artifacts[@]}" -eq 26
+          test "${#artifacts[@]}" -eq 14
           gh release create "$RELEASE_TAG" "${artifacts[@]}" --verify-tag --latest --prerelease=false --notes-file release-notes.md --title "Deltamod Community ${RELEASE_TAG#community-v}"
       - name: Publish isolated signed updater rehearsal
         if: needs.validate.outputs.validation != 'true' && needs.validate.outputs.rehearsal == 'true'
@@ -745,7 +740,7 @@ jobs:
         shell: bash
         run: |
           mapfile -d '' artifacts < <(find release-artifacts -type f -print0)
-          test "${#artifacts[@]}" -eq 26
+          test "${#artifacts[@]}" -eq 14
           gh release create "$RELEASE_TAG" "${artifacts[@]}" \
             --target "$GITHUB_SHA" \
             --prerelease \
@@ -760,7 +755,7 @@ jobs:
         shell: bash
         run: |
           mapfile -d '' artifacts < <(find release-artifacts -type f -print0)
-          test "${#artifacts[@]}" -eq 19
+          test "${#artifacts[@]}" -eq 11
           gh release create "$RELEASE_TAG" "${artifacts[@]}" \
             --verify-tag \
             --prerelease \
