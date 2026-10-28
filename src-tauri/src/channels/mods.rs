@@ -215,8 +215,60 @@ fn unix_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+fn annotate_legacy_catalog_copy(result: &mut Value) {
+    let Some(object) = result.as_object_mut() else {
+        return;
+    };
+    // These catalog shapes and fields were emitted as fixed app-owned copy by
+    // the previous generator. Do not infer ownership from Nexus titles/authors:
+    // an actual provider name can equal an old generated fallback.
+    let legacy_moddb = object.get("provider").and_then(Value::as_str) == Some("moddb")
+        && object.get("catalogScope").and_then(Value::as_str) == Some("recent-rss")
+        && object.get("feedLimit").and_then(Value::as_u64) == Some(10)
+        && object.get("attribution").and_then(Value::as_str)
+            == Some("ModDB RSS exposes only its 10 most recent downloads");
+    let legacy_nexus = object.get("provider").and_then(Value::as_str) == Some("nexus")
+        && object.get("catalogScope").and_then(Value::as_str) == Some("page")
+        && object.get("attribution").and_then(Value::as_str)
+            == Some("Metadata and popularity counts provided by Nexus Mods");
+    if !object.contains_key("attributionSource") && !object.contains_key("attributionSourceArgs") {
+        if legacy_moddb {
+            object.insert(
+                "attributionSource".into(),
+                json!("ModDB RSS exposes only its {0} most recent downloads"),
+            );
+            object.insert("attributionSourceArgs".into(), json!([10]));
+        } else if legacy_nexus {
+            object.insert(
+                "attributionSource".into(),
+                json!("Metadata and popularity counts provided by Nexus Mods"),
+            );
+            object.insert("attributionSourceArgs".into(), json!([]));
+        }
+    }
+    if !legacy_moddb {
+        return;
+    }
+    let Some(items) = object.get_mut("items").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in items.iter_mut().filter_map(Value::as_object_mut) {
+        if item.get("provider").and_then(Value::as_str) == Some("moddb")
+            && item.get("author").and_then(Value::as_str) == Some("ModDB contributor")
+            && !item.contains_key("authorSource")
+            && !item.contains_key("authorSourceArgs")
+        {
+            item.insert("authorSource".into(), json!("{0} contributor"));
+            item.insert("authorSourceArgs".into(), json!(["ModDB"]));
+        }
+    }
+}
+
 fn cached_result(result: Value, cached: bool, stale: bool, stored_at_ms: Option<u64>) -> Value {
     let mut result = result;
+    if cached {
+        annotate_legacy_catalog_copy(&mut result);
+    }
     if let Some(object) = result.as_object_mut() {
         object.insert("cached".into(), Value::Bool(cached));
         object.insert("stale".into(), Value::Bool(stale));
@@ -796,11 +848,69 @@ pub fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::{
-        gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog,
+        cached_result, gamebanana_catalog_url, legacy_mod_image_from_roots, moddb_catalog,
         normalized_provider_error,
     };
     use deltamod_network_runtime::ModEntry;
     use deltamod_provider_platform::{KnownProvider, ProviderFailureKind};
+
+    #[test]
+    fn legacy_cached_copy_gains_only_proven_owned_metadata() {
+        let old_moddb = serde_json::json!({
+            "provider": "moddb", "catalogScope": "recent-rss", "feedLimit": 10,
+            "attribution": "ModDB RSS exposes only its 10 most recent downloads",
+            "items": [
+                {"provider": "moddb", "title": "ModDB contributor", "author": "ModDB contributor", "summary": "Literal description"},
+                {"provider": "moddb", "title": "A real title", "author": "A real author"},
+                {"provider": "nexus", "title": "Nexus mod", "author": "Nexus Mods contributor"}
+            ]
+        });
+        let migrated = cached_result(old_moddb.clone(), true, true, Some(42));
+        assert_eq!(migrated["attribution"], old_moddb["attribution"]);
+        assert_eq!(migrated["attributionSourceArgs"], serde_json::json!([10]));
+        assert_eq!(migrated["items"][0]["title"], "ModDB contributor");
+        assert!(migrated["items"][0]["titleSource"].is_null());
+        assert_eq!(migrated["items"][0]["author"], "ModDB contributor");
+        assert_eq!(migrated["items"][0]["authorSource"], "{0} contributor");
+        assert_eq!(migrated["items"][0]["summary"], "Literal description");
+        assert_eq!(migrated["items"][1], old_moddb["items"][1]);
+        assert_eq!(migrated["items"][2], old_moddb["items"][2]);
+        assert_eq!(migrated["cached"], true);
+        assert_eq!(migrated["stale"], true);
+        assert_eq!(migrated["cachedAtMs"], 42);
+
+        let old_nexus = serde_json::json!({
+            "provider": "nexus", "catalogScope": "page",
+            "attribution": "Metadata and popularity counts provided by Nexus Mods",
+            "items": [{"provider": "nexus", "title": "Nexus mod", "author": "Nexus Mods contributor"}]
+        });
+        let migrated = cached_result(old_nexus.clone(), true, false, None);
+        assert_eq!(migrated["attributionSource"], old_nexus["attribution"]);
+        assert_eq!(migrated["attributionSourceArgs"], serde_json::json!([]));
+        assert_eq!(migrated["items"], old_nexus["items"]);
+
+        let mut explicit = old_moddb.clone();
+        explicit["attributionSource"] = serde_json::json!("Existing source");
+        explicit["attributionSourceArgs"] = serde_json::json!(["Existing argument"]);
+        explicit["items"][0]["authorSource"] = serde_json::Value::Null;
+        explicit["items"][0]["authorSourceArgs"] = serde_json::json!([]);
+        let preserved = cached_result(explicit.clone(), true, false, None);
+        assert_eq!(
+            preserved["attributionSource"],
+            explicit["attributionSource"]
+        );
+        assert_eq!(
+            preserved["attributionSourceArgs"],
+            explicit["attributionSourceArgs"]
+        );
+        assert_eq!(preserved["items"], explicit["items"]);
+
+        let mut unrelated = old_moddb;
+        unrelated["attribution"] = serde_json::json!("Provider-supplied attribution");
+        let preserved = cached_result(unrelated.clone(), true, false, None);
+        assert!(preserved["attributionSource"].is_null());
+        assert_eq!(preserved["items"], unrelated["items"]);
+    }
 
     #[test]
     fn owned_provider_errors_keep_typed_recovery_fields_and_translation_sources() {

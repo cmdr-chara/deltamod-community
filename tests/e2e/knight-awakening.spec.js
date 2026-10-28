@@ -3,10 +3,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.join(__dirname, '../..');
 const source = fs.readFileSync(path.join(root, 'web/index.js'), 'utf8');
+const languageFiles = Object.fromEntries(fs.readdirSync(path.join(root, 'web/langs')).flatMap(code =>
+    ['language.json', 'metadata.txt'].flatMap(name => {
+        const file = path.join(root, 'web/langs', code, name);
+        return fs.existsSync(file) ? [[`./langs/${code}/${name}`, fs.readFileSync(file, 'utf8')]] : [];
+    })
+));
+const italian = JSON.parse(languageFiles['./langs/it/language.json']);
 async function setup(page) {
     await page.setViewportSize({width: 1280, height: 800});
     await page.setContent('<button class="theme-replay-event">Replay awakening</button>');
     await page.addStyleTag({path: path.join(root, 'web/index.css')});
+    // The real shell initializes localization before its transition functions.
+    // Keep that dependency here so accessibility bindings exercise real catalogs.
+    await page.evaluate(files => {
+        window.fetch = async url => {
+            const body = files[String(url)];
+            return new Response(body || '', { status: body === undefined ? 404 : 200 });
+        };
+    }, languageFiles);
+    await page.addScriptTag({path: path.join(root, 'web/modules/localization.js')});
+    await page.evaluate(async () => {
+        await window.Localization.ready;
+        await window.Localization.setLanguage('en');
+    });
     const assets = Object.fromEntries(fs.readdirSync(path.join(root,'web/themes/img/the-knight-transition')).map(name => [name, 'data:image/png;base64,' + fs.readFileSync(path.join(root,'web/themes/img/the-knight-transition',name)).toString('base64')]));
     await page.evaluate(assets => {
         window.theme = {transitionEffect: 'roaring-knight-monochrome-awakening'};
@@ -24,6 +44,20 @@ test('awakening stages three cuts and cleans up after revealing', async ({page},
     await setup(page);
     await page.clock.install();
     await page.evaluate(() => playRoaringKnightTransition());
+    await expect(page.locator('#theme-transition-overlay')).toHaveAttribute('aria-label', 'Roaring Knight awakening');
+    await expect(page.locator('#theme-transition-skip')).toHaveText('Skip · Esc');
+    await page.locator('#theme-transition-skip').focus();
+    const sameTransition = await page.evaluate(async () => {
+        const overlay = document.getElementById('theme-transition-overlay');
+        const skip = document.getElementById('theme-transition-skip');
+        await window.Localization.setLanguage('it');
+        return overlay === document.getElementById('theme-transition-overlay')
+            && skip === document.getElementById('theme-transition-skip');
+    });
+    expect(sameTransition).toBe(true);
+    await expect(page.locator('#theme-transition-overlay')).toHaveAttribute('aria-label', italian.shell_knight_awakening);
+    await expect(page.locator('#theme-transition-skip')).toHaveText(italian.shell_skip);
+    await expect(page.locator('#theme-transition-skip')).toBeFocused();
     await page.clock.runFor(2800);
     await expect(page.locator('.theme-transition-fountain span')).toHaveCount(16);
     await page.evaluate(() => document.getAnimations().forEach(animation => { animation.currentTime = 2800; animation.pause(); }));
@@ -35,6 +69,7 @@ test('awakening stages three cuts and cleans up after revealing', async ({page},
     expect(await page.evaluate(() => window.__completed)).toBe(1);
     await page.clock.runFor(1400);
     await expect(page.locator('#theme-transition-overlay')).toHaveCount(0);
+    await expect(page.locator('.theme-replay-event')).toBeFocused();
 });
 test('Escape cancels every phase and replay creates only one event', async ({page}) => {
     await setup(page);

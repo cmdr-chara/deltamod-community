@@ -168,6 +168,12 @@ retryable. Relative comment timestamps retain an absolute date for precision,
 and provider text is displayed inertly. Existing pagination and provider features
 are retained.
 
+Existing provider caches remain usable. Known app-owned attribution and ModDB
+contributor labels in older cache records receive translation provenance in
+memory, without rewriting stored data or changing cache freshness. Older Nexus
+records cannot distinguish a generated name from a real identical name; those
+ambiguous titles/authors remain literal until a live refresh supplies provenance.
+
 There is no AI-generated-mod filter. Import continues to preserve optional,
 unknown metadata, including AI-disclosure metadata, without changing whether the
 mod is accepted. Plugin research is a separate future design effort; this change
