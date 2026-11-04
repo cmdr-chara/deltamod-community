@@ -843,7 +843,10 @@ fn inventory_zip(
         let file = archive
             .by_index(index)
             .map_err(|error| ImportError::Format(error.to_string()))?;
-        let (path, folded) = normalize_entry(file.name(), limits)?;
+        let entry_name = file
+            .name()
+            .map_err(|error| ImportError::Format(error.to_string()))?;
+        let (path, folded) = normalize_entry(&entry_name, limits)?;
         let mode = file.unix_mode().unwrap_or(0);
         let file_type = mode & 0o170000;
         let kind = if file.is_dir() || file_type == 0o040000 {
@@ -851,7 +854,7 @@ fn inventory_zip(
         } else if file_type == 0 || file_type == 0o100000 {
             EntryKind::File
         } else {
-            return Err(ImportError::EntryType(file.name().into()));
+            return Err(ImportError::EntryType(entry_name.to_string()));
         };
         entries.push(EntryPlan {
             path,
