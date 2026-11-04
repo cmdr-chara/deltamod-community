@@ -1,3 +1,11 @@
+# Deltamod Community 2.1.5
+
+Released 2026-11-04.
+
+## Changes
+
+- fix(security): update zip to a patched release and decode entry names (`35f01f8`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
