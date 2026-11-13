@@ -117,6 +117,7 @@ fn choose<D: DialogBackend>(
             &selected,
             &destination,
             reference_archive_limits(),
+            chapter_layout_dir,
             || false,
         ) {
             let _ = fs::remove_dir_all(&destination);
@@ -141,6 +142,19 @@ fn choose<D: DialogBackend>(
         let _ = fs::remove_dir_all(dir);
     }
     result
+}
+
+// An archive made of only `chapter3_windows/data.win` must keep that directory:
+// unwrapping it would store the chapter file as the root data.win reference.
+fn chapter_layout_dir(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    let Some(rest) = name.strip_prefix("chapter") else {
+        return false;
+    };
+    let Some(digits) = rest.strip_suffix("_windows") else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn reference_archive_limits() -> deltamod_archive_import_runtime::Limits {
