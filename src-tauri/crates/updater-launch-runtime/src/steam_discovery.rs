@@ -239,9 +239,6 @@ pub fn steam_manifest_install_dir(input: &str, expected_app_id: u32) -> Option<S
 }
 
 fn linked(metadata: &fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -249,7 +246,7 @@ fn linked(metadata: &fs::Metadata) -> bool {
             return true;
         }
     }
-    false
+    metadata.file_type().is_symlink()
 }
 
 fn read_steam_manifest(path: &Path) -> io::Result<String> {
