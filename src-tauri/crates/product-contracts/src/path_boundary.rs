@@ -147,9 +147,6 @@ fn windows_reserved(component: &str) -> bool {
 }
 
 fn is_unsafe(metadata: &fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -157,7 +154,7 @@ fn is_unsafe(metadata: &fs::Metadata) -> bool {
             return true;
         }
     }
-    false
+    metadata.file_type().is_symlink()
 }
 
 /// Read-only preflight inspection. This deliberately does not expose a
