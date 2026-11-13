@@ -109,6 +109,7 @@
     "undertaleModTool:choose",
     "referenceFiles:status",
     "referenceFiles:choose",
+    "referenceFiles:discover",
     "openSysFolder",
     "openModFolder",
     "getUniqueFlag",

@@ -636,6 +636,7 @@ impl FromStr for BackendChannel {
             | "undertaleModTool:choose"
             | "referenceFiles:status"
             | "referenceFiles:choose"
+            | "referenceFiles:discover"
             | "browseFile"
             | "locateDelta"
             | "importTheme"
@@ -1130,7 +1131,7 @@ fn dispatch_domain(
     if let Some(value) = channels::dialogs::dispatch(app, state, &dialogs, name, data)? {
         return Ok(value);
     }
-    if let Some(value) = channels::reference_files::dispatch(state, &dialogs, name)? {
+    if let Some(value) = channels::reference_files::dispatch(state, &dialogs, name, data)? {
         return Ok(value);
     }
     if let Some(value) = channels::nexus_download::dispatch(app, state, &dialogs, name, data)? {
