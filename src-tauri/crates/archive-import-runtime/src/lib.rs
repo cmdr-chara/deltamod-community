@@ -458,12 +458,19 @@ pub fn import_game_archive<C: Fn() -> bool>(
 /// publishes it only after the complete tree validates. Unlike
 /// [`import_game_archive`] no packaged executable is required; used for
 /// archives that carry only data files (Windows reference folders).
-pub fn extract_archive_bounded<C: Fn() -> bool>(
+pub fn extract_archive_bounded<C, P>(
     archive: &Path,
     destination: &Path,
     limits: Limits,
+    preserve_top_level_dir: P,
     cancelled: C,
-) -> Result<GameImportResult, ImportError> {
+) -> Result<GameImportResult, ImportError>
+where
+    C: Fn() -> bool,
+    // A single top-level directory whose name is itself meaningful content
+    // (e.g. `chapter3_windows`) is kept rather than unwrapped.
+    P: Fn(&str) -> bool,
+{
     check_cancelled(&cancelled)?;
     validate_limits(limits)?;
     if destination.exists() {
@@ -504,7 +511,7 @@ pub fn extract_archive_bounded<C: Fn() -> bool>(
         &cancelled,
     )?;
     validate_tree(staging.path(), limits, &cancelled)?;
-    let content_root = identify_content_root(staging.path())?;
+    let content_root = identify_content_root_preserving(staging.path(), &preserve_top_level_dir)?;
     check_cancelled(&cancelled)?;
     let commit_source = if content_root == staging.path() {
         staging.keep()
@@ -1256,6 +1263,13 @@ fn validate_tree(
 }
 
 fn identify_content_root(staging: &Path) -> Result<PathBuf, ImportError> {
+    identify_content_root_preserving(staging, |_| false)
+}
+
+fn identify_content_root_preserving<P: Fn(&str) -> bool>(
+    staging: &Path,
+    preserve: P,
+) -> Result<PathBuf, ImportError> {
     let entries = fs::read_dir(staging)?.collect::<Result<Vec<_>, _>>()?;
     let content = entries
         .iter()
@@ -1266,8 +1280,13 @@ fn identify_content_root(staging: &Path) -> Result<PathBuf, ImportError> {
         })
         .collect::<Vec<_>>();
     // Wrapper detection ignores Finder metadata only after the entire archive
-    // was inventoried, size-bounded, extracted and link/path-validated.
+    // was inventoried, size-bounded, extracted and link/path-validated. A lone
+    // directory the caller still recognises as content is not a wrapper.
     if content.len() == 1 && content[0].file_type()?.is_dir() {
+        let name = content[0].file_name();
+        if preserve(&name.to_string_lossy()) {
+            return Ok(staging.to_path_buf());
+        }
         Ok(content[0].path())
     } else {
         Ok(staging.to_path_buf())
@@ -2504,14 +2523,38 @@ mod tests {
         ]);
         let parent = tempfile::tempdir().unwrap();
         let destination = parent.path().join("extracted");
-        let result =
-            extract_archive_bounded(archive.path(), &destination, Limits::default(), || false)
-                .unwrap();
+        let result = extract_archive_bounded(
+            archive.path(),
+            &destination,
+            Limits::default(),
+            |_| false,
+            || false,
+        )
+        .unwrap();
         assert_eq!(result.root, destination);
         assert!(result.root.join("data.win").is_file());
         assert!(result.root.join("chapter1_windows/data.win").is_file());
         assert!(!result.root.join("game").exists());
         assert_eq!(fs::read_dir(parent.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn bounded_extract_preserves_a_meaningful_single_top_level_directory() {
+        // Unwrapping `chapter3_windows` would publish its data.win as the root
+        // file and lose the chapter identity the directory name carries.
+        let archive = zip_fixture(&[("chapter3_windows/data.win", b"FORM ch3".as_slice())]);
+        let parent = tempfile::tempdir().unwrap();
+        let destination = parent.path().join("extracted");
+        let result = extract_archive_bounded(
+            archive.path(),
+            &destination,
+            Limits::default(),
+            |name| name.starts_with("chapter"),
+            || false,
+        )
+        .unwrap();
+        assert!(result.root.join("chapter3_windows/data.win").is_file());
+        assert!(!result.root.join("data.win").exists());
     }
 
     #[test]
