@@ -341,6 +341,25 @@ async function addReferenceFileRows() {
 
     const summary = () => summarizeReferenceFiles(files);
     const description = () => localize('reference_desc', '');
+    const chooseReferences = async (args) => {
+        try {
+            const result = await window.deltamodBackend.invoke('referenceFiles:choose', args);
+            if (result && result.ok === false) {
+                await htmlAlert(
+                    () => localize('reference_not_found', 'No Windows game files found'),
+                    () => result.messageSource ? uiText(result.messageSource) : result.message,
+                    [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
+                );
+            }
+        } catch (error) {
+            await htmlAlert(
+                () => localize('reference_not_found', 'No Windows game files found'),
+                () => String(error && error.message ? error.message : error),
+                [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
+            );
+        }
+        await window.currentPageStack.cat('inst');
+    };
     await addRowHeader(() => localize('reference_files', 'Windows reference files'), "desktop_windows");
     await addInfoRow(
         () => localize('reference_stored', 'Stored files'),
@@ -354,33 +373,13 @@ async function addReferenceFileRows() {
             ? localize('reference_replace', 'Replace Windows reference files')
             : localize('reference_add', 'Add Windows reference files'),
         () => localize('reference_choose_desc', ''),
-        async () => {
-            const result = await window.deltamodBackend.invoke('referenceFiles:choose', []);
-            if (result && result.ok === false) {
-                await htmlAlert(
-                    () => localize('reference_not_found', 'No Windows game files found'),
-                    () => result.messageSource ? uiText(result.messageSource) : result.message,
-                    [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
-                );
-            }
-            await window.currentPageStack.cat('inst');
-        },
+        () => chooseReferences([]),
         () => localize('reference_choose', 'Choose folder')
     );
     await addButton(
         () => localize('reference_choose_archive', 'Import from archive'),
         () => localize('reference_choose_archive_desc', 'Pick a downloaded .zip or .7z of the Windows game; the data.win files are extracted automatically.'),
-        async () => {
-            const result = await window.deltamodBackend.invoke('referenceFiles:choose', ['archive']);
-            if (result && result.ok === false) {
-                await htmlAlert(
-                    () => localize('reference_not_found', 'No Windows game files found'),
-                    () => result.messageSource ? uiText(result.messageSource) : result.message,
-                    [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
-                );
-            }
-            await window.currentPageStack.cat('inst');
-        },
+        () => chooseReferences(['archive']),
         () => localize('reference_choose_archive_short', 'Choose .zip/.7z')
     );
 
@@ -391,25 +390,12 @@ async function addReferenceFileRows() {
         const result = await window.deltamodBackend.invoke('referenceFiles:discover', []);
         if (result && Array.isArray(result.candidates)) discovered = result.candidates;
     } catch { }
-    const applyResult = async (result) => {
-        if (result && result.ok === false) {
-            await htmlAlert(
-                () => localize('reference_not_found', 'No Windows game files found'),
-                () => result.messageSource ? uiText(result.messageSource) : result.message,
-                [{ text: () => localize('allmods_ok', 'OK'), resolveWith: 'ok' }]
-            );
-        }
-        await window.currentPageStack.cat('inst');
-    };
     for (const candidate of discovered) {
         if (!candidate || typeof candidate.path !== 'string') continue;
         await addButton(
             () => candidate.path,
             () => summarizeReferenceFiles(Array.isArray(candidate.files) ? candidate.files : []).long,
-            async () => {
-                const result = await window.deltamodBackend.invoke('referenceFiles:choose', [{ path: candidate.path }]);
-                await applyResult(result);
-            },
+            () => chooseReferences([{ path: candidate.path }]),
             () => localize('reference_use_found', 'Use this folder')
         );
     }
