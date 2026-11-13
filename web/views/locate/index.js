@@ -189,11 +189,13 @@ document.getElementById('cancelGameImport').onclick = async () => {
             });
             img.src = './gamesIco/' + game.id+'.png';
             option.appendChild(img);
-            gOptions.appendChild(option);
 
-            tippy(option, {
-                content: game.name
-            });
+            const nameLabel = document.createElement('span');
+            nameLabel.classList.add('game-name');
+            nameLabel.textContent = game.name;
+            option.appendChild(nameLabel);
+
+            gOptions.appendChild(option);
     }
 })();
 })();

@@ -60,43 +60,101 @@
     min-width: 180px;
 }
 
+/* Game picker: labeled pixel tiles, not an icon strip — the name is always
+   visible and selection is a full-tile state. */
 .game-option {
-    display: block;
-    flex: 0 0 50px;
-    width: 50px;
-    height: 50px;
-    padding: 0;
-    border: 0;
+    position: relative;
+    display: flex;
+    min-height: 112px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 10px 12px;
+    border: 1px solid var(--panel-border);
     border-radius: var(--control-radius);
-    background: transparent;
+    background: rgba(0, 0, 0, 0.35);
     cursor: pointer;
+    transition:
+        transform var(--motion-fast) var(--motion-ease-out),
+        border-color var(--motion-fast) var(--motion-ease-out),
+        background-color var(--motion-fast) var(--motion-ease-out),
+        box-shadow var(--motion-fast) var(--motion-ease-out);
+}
+
+.game-option:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--theme-color) 45%, var(--panel-border));
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.game-option:active {
+    transform: translateY(0);
+}
+
+.game-option.selectedGameIco {
+    border-color: var(--theme-color);
+    background: color-mix(in srgb, var(--theme-color) 14%, rgba(0, 0, 0, 0.45));
+    box-shadow:
+        inset 0 0 0 1px var(--theme-color),
+        0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+.game-option.selectedGameIco::after {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    display: grid;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--theme-color);
+    color: #fff;
+    content: "\e5ca"; /* material "check" */
+    font-family: "Material Symbols Outlined", sans-serif;
+    font-size: 13px;
+    place-items: center;
 }
 
 .gameIco {
     display: block;
-    width: 30px;
-    height: 30px;
+    width: 48px;
+    height: 48px;
     object-fit: contain;
-    opacity: 0.4;
-    padding: 10px;
-    border-radius: var(--control-radius);
+    opacity: 0.75;
     background: transparent;
+    image-rendering: pixelated;
     pointer-events: none;
     transition:
-        background-color var(--motion-fast) var(--motion-ease-out),
-        box-shadow var(--motion-fast) var(--motion-ease-out),
-        opacity var(--motion-fast) linear;
+        opacity var(--motion-fast) linear,
+        transform var(--motion-fast) var(--motion-ease-out);
 }
 
-.game-option:hover .gameIco {
-    opacity: 0.8;
-    background: rgba(255, 255, 255, 0.08);
+.game-option:hover .gameIco,
+.game-option.selectedGameIco .gameIco {
+    opacity: 1;
 }
 
 .game-option.selectedGameIco .gameIco {
-    opacity: 1;
-    background: var(--theme-color-point2);
-    box-shadow: inset 0 0 0 2px var(--theme-color);
+    transform: scale(1.06);
+}
+
+.game-name {
+    display: block;
+    max-width: 100%;
+    color: var(--muted-text);
+    font-family: Calibri, sans-serif;
+    font-size: 12.5px;
+    line-height: 1.2;
+    text-align: center;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+
+.game-option.selectedGameIco .game-name {
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .game-option:focus-visible {
@@ -156,18 +214,13 @@ input[type="checkbox"] {
 }
 
 .gOptions {
-    display: flex;
-    box-sizing: content-box;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     width: auto;
-    min-height: 50px;
-    justify-content: left;
-    align-items: center;
-    gap: 16px;
-    overflow-x: auto;
-    padding: 10px;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--control-radius);
-    background: rgba(0, 0, 0, 0.35);
+    min-height: 0;
+    align-items: stretch;
+    gap: 10px;
+    padding: 0;
 }
 
 .importProgress {
