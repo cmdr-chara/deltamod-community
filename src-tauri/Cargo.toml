@@ -85,7 +85,7 @@ deltamod-tauri-os-adapters = { path = "crates/os-adapters", features = ["tauri-a
 deltamod-windows-taskbar-icon = { path = "crates/windows-taskbar-icon" }
 
 [dev-dependencies]
-zip = { version = "=9.0.5", default-features = false, features = ["deflate"] }
+zip = { version = "=9.5.0", default-features = false, features = ["deflate"] }
 
 [profile.release]
 codegen-units = 1
