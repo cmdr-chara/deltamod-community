@@ -227,9 +227,6 @@ impl ProviderCatalogCache {
 }
 
 fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt as _;
@@ -238,7 +235,7 @@ fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
             return true;
         }
     }
-    false
+    metadata.file_type().is_symlink()
 }
 
 fn now_ms() -> u64 {
