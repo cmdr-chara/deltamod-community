@@ -701,9 +701,6 @@ fn planned_directory_identity(file: &File, phase: ExecutionPhase) -> Result<File
 }
 
 pub(crate) fn metadata_is_unsafe(metadata: &Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -712,7 +709,7 @@ pub(crate) fn metadata_is_unsafe(metadata: &Metadata) -> bool {
             return true;
         }
     }
-    false
+    metadata.file_type().is_symlink()
 }
 
 fn validate_component(component: &str, phase: ExecutionPhase) -> Result<()> {
