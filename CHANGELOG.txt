@@ -1,3 +1,64 @@
+# Deltamod Community 2.1.6
+
+Released 2026-11-14.
+
+## Changes
+
+- build(deps): bump tauri-plugin-single-instance in /src-tauri (`e6ed942`).
+- build(deps): bump uuid from 1.27.0 to 1.29.0 in /src-tauri (`81b5e56`).
+- build(deps): bump sevenz-rust2 from 0.22.2 to 0.24.2 in /src-tauri (`91e6eb1`).
+- Merge pull request #164 from cmdr-chara/dependabot/cargo/src-tauri/uuid-1.29.0 (`20795e7`).
+- build(deps): bump rustix from 1.1.5 to 1.1.6 in /native (`689c4ad`).
+- Merge pull request #166 from cmdr-chara/dependabot/cargo/src-tauri/sevenz-rust2-0.24.1 (`c8f8c03`).
+- build(deps): bump axios from 1.20.0 to 1.21.0 (`45d0268`).
+- build(deps): bump tauri-plugin-deep-link in /src-tauri (`66d2e66`).
+- build(deps): bump tokio from 1.53.2 to 1.54.1 in /src-tauri (`c9dbb1d`).
+- Merge pull request #161 from cmdr-chara/dependabot/npm_and_yarn/axios-1.21.0 (`24e7580`).
+- Merge pull request #167 from cmdr-chara/dependabot/cargo/src-tauri/tauri-plugin-deep-link-2.6.3 (`f873190`).
+- Merge pull request #168 from cmdr-chara/dependabot/cargo/src-tauri/tokio-1.54.1 (`89ddb6a`).
+- build(deps-dev): bump @playwright/test from 1.64.1 to 1.65.0 (`215a298`).
+- build(deps): bump roxmltree from 0.21.1 to 0.21.2 in /src-tauri (`ed5c210`).
+- build(deps): bump tauri-plugin-dialog from 2.8.1 to 2.8.4 in /src-tauri (`c1625ae`).
+- build(deps): bump rustix from 1.1.5 to 1.1.6 in /src-tauri (`a0aca54`).
+- Merge pull request #174 from cmdr-chara/dependabot/cargo/src-tauri/roxmltree-0.21.2 (`e711bf9`).
+- Merge pull request #175 from cmdr-chara/dependabot/cargo/src-tauri/tauri-plugin-dialog-2.8.4 (`6d854ff`).
+- build(deps): bump semver from 7.8.5 to 7.8.6 (`b3eb454`).
+- build(deps): bump zip from 9.0.5 to 9.5.0 in /src-tauri (`03bcaa5`).
+- build(deps-dev): bump @types/node from 26.6.5 to 26.6.6 (`fe17116`).
+- build(deps-dev): bump vite from 8.3.5 to 8.3.7 (`aeabaaa`).
+- fix: preserve path safety checks without needless bool on Linux (`d029947`).
+- fix: preserve path safety checks without needless bool on Linux (`6b2f9de`).
+- fix: preserve path safety checks without needless bool on Linux (`2e52765`).
+- fix: preserve path safety checks without needless bool on Linux (`deed422`).
+- fix: preserve path safety checks without needless bool on Linux (`4190200`).
+- fix: preserve path safety checks without needless bool on Linux (`1863086`).
+- Merge pull request #173 from cmdr-chara/dependabot/npm_and_yarn/semver-7.8.6 (`272fc9f`).
+- fix: preserve path safety checks without needless bool on Linux (`1936b0d`).
+- fix: preserve path safety checks without needless bool on Linux (`05d4617`).
+- Merge pull request #177 from cmdr-chara/dependabot/cargo/src-tauri/zip-9.4.1 (`198402c`).
+- Merge pull request #172 from cmdr-chara/dependabot/npm_and_yarn/vite-8.3.6 (`9d9bbe0`).
+- Merge pull request #176 from cmdr-chara/dependabot/cargo/src-tauri/rustix-1.1.6 (`33c9d63`).
+- Merge pull request #170 from cmdr-chara/dependabot/npm_and_yarn/playwright/test-1.65.0 (`596f800`).
+- Merge pull request #162 from cmdr-chara/dependabot/npm_and_yarn/types/node-26.6.6 (`70f6d06`).
+- Merge pull request #165 from cmdr-chara/dependabot/cargo/src-tauri/tauri-plugin-single-instance-2.5.5 (`b572309`).
+- Merge pull request #163 from cmdr-chara/dependabot/cargo/native/rustix-1.1.6 (`7dc6e9e`).
+- build(deps-dev): bump vitest from 5.0.5 to 5.1.0 (`b66e98f`).
+- Merge pull request #171 from cmdr-chara/dependabot/npm_and_yarn/vitest-5.1.0 (`f24dcf4`).
+- macOS: apply g3mpatch natively, accept archives and auto-discover reference files (`c74ad30`).
+- archive import: preserve chapter layout dirs when unwrapping archives (`c8ab2aa`).
+- options: surface referenceFiles:choose rejections in the UI (`a6b3fbb`).
+- tests: bump renderer channel count for referenceFiles:discover (`adc707a`).
+- locate view: group the import flow into a legible panel (`f50ea1a`).
+- locate: bolder game picker tiles with check badge and even grid (`dd8675c`).
+- patch menu: subtle mod-row hover, artwork radius on tokens (`c3390ac`).
+- shell chrome: labeled sidebar, macOS-style window controls, wrap-safe patch toolbar (`ae73f46`).
+- de-containerize shell: drop nested pills and boxes-in-boxes across views (`02d9de6`).
+- options: filled slider track, ghost action buttons, focused panels (`76f0e17`).
+- themesel + credits: flat rows, in-use badge, lineage strip (`785fbf2`).
+- Fix CI contracts: restore opt backdrop, drop scale() and static knight glow (`ad34385`).
+- Merge PR #178: macOS g3mpatch on native game.ios, archive import and auto-discovery for reference files (`48b9fe1`).
+- Merge PR #179: frontend polish pass (locate, options, themesel, credits, knight awakening, shell) (`2712f8a`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
