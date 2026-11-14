@@ -1533,8 +1533,10 @@ mod tests {
             .stage_patch_outputs(&["id".into()], "stage-1", |_| {}, || false)
             .unwrap();
         let output = staged.artifacts()[0].path().to_owned();
+        let replacement = output.with_file_name("swapped-output.bin");
+        fs::write(&replacement, b"patched").unwrap();
         fs::remove_file(&output).unwrap();
-        fs::write(&output, b"patched").unwrap();
+        fs::rename(&replacement, &output).unwrap();
         assert_eq!(
             staged.verify().unwrap_err().code(),
             StagingErrorCode::InvalidOutput
@@ -1544,8 +1546,10 @@ mod tests {
             .stage_patch_outputs(&["id".into()], "stage-2", |_| {}, || false)
             .unwrap();
         let target = runtime.game_root.join("data.win");
+        let replacement = target.with_file_name("swapped-target.bin");
+        fs::write(&replacement, b"original").unwrap();
         fs::remove_file(&target).unwrap();
-        fs::write(&target, b"original").unwrap();
+        fs::rename(&replacement, &target).unwrap();
         assert_eq!(
             staged.verify().unwrap_err().code(),
             StagingErrorCode::TargetChanged
