@@ -13,7 +13,6 @@
     z-index: 99;
     margin-bottom: 14px;
     border: 0;
-    border: 1px solid var(--panel-border);
     border-radius: 16px;
     background: rgba(9, 9, 11, 0.82);
     backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
@@ -251,7 +250,7 @@
 
 .shop-page table {
     overflow: hidden;
-    border: 1px solid var(--panel-border);
+    border: 0;
     background: rgba(9, 9, 11, 0.76);
 }
 
@@ -703,25 +702,34 @@ input {
 
 .shop-page .shop-social-action {
     display: inline-flex;
-    flex-direction: column;
+    flex-direction: row;
     justify-content: center;
     align-items: center;
-    gap: 3px;
+    gap: 5px;
     vertical-align: middle;
-    width: 76px;
+    width: auto;
+    min-width: 0;
     height: auto;
-    min-height: 68px;
+    min-height: 36px;
     margin: 0 !important;
     margin-inline-start: 4px !important;
-    padding: 7px 4px;
-    border-radius: 12px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-text);
     line-height: 1.2;
-    overflow-wrap: anywhere;
     font-family: system-ui, sans-serif;
+    box-shadow: none;
+}
+.shop-page .shop-social-action:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-primary);
 }
 .shop-social-label { font-size: 11px; max-width: 100%; }
 .shop-social-count { font-size: 12px; font-variant-numeric: tabular-nums; }
-.shop-social-action .shop-action-icon { width: 18px; height: 18px; }
+.shop-social-action .shop-action-icon { width: 16px; height: 16px; }
+.shop-social-action.is-liked { color: var(--theme-color); }
 .shop-social-action.is-liked .shop-action-icon { fill: currentColor; }
 .shop-page .shop-action-cell { white-space: normal; }
 
