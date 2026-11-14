@@ -7,7 +7,6 @@
     border: 0;
     border-radius: var(--panel-radius);
     background: var(--panel-bg-strong);
-    backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
     box-shadow: var(--shadow-panel);
 }
 
@@ -104,6 +103,7 @@
 .options-page .opt {
     min-width: 0;
     overflow: hidden;
+    backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
 }
 
 .options-page .setting-title {
@@ -215,12 +215,12 @@
     border-radius: 50%;
     background: white;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-    transition: transform var(--motion-fast) var(--motion-ease-out);
+    transition: box-shadow var(--motion-fast) var(--motion-ease-out);
 }
 
 .viewport input.setting-range:hover::-webkit-slider-thumb,
 .viewport input.setting-range:active::-webkit-slider-thumb {
-    transform: scale(1.15);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 5px rgba(255, 255, 255, 0.16);
 }
 
 .viewport input.setting-range:focus-visible::-webkit-slider-thumb {
@@ -306,7 +306,7 @@
     margin-top: 0px;
     border: 0;
     border-inline-end: 1px solid var(--panel-divider);
-    backdrop-filter: none;
+    backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
     box-shadow: none;
 }
 
