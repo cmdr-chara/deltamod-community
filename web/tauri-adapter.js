@@ -149,6 +149,7 @@
         'undertaleModTool:status',
         'referenceFiles:status',
         'referenceFiles:choose',
+        'referenceFiles:discover',
         'updater-status',
         'validateGamebananaToken',
         'version'

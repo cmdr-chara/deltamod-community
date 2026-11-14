@@ -31,12 +31,12 @@
 
 ## What's new in 2.1.0
 
-- **Improved macOS mod support.** Use a managed copy of the game and matching Windows reference files for supported xdelta patches. See [Patching on macOS](#patching-on-macos).
+- **Improved macOS mod support.** Use a managed copy of the game; `.g3mpatch` mods apply to the Mac data file directly, and `.xdelta` mods use matching Windows reference files. See [Patching on macOS](#patching-on-macos).
 - **More robust mod import and patching.** Stronger validation, staging, rollback, and recovery across the native runtime.
 - **More reliable mod browsing.** Improvements to provider shop handling, GameBanana comments, and UI localization.
 - **Dependency and security updates.** Refreshed React, Tauri, Vite, Vitest, Playwright, Rust dependencies, and CI actions, including high-severity npm audit remediations.
 
-CSX script mods are currently unavailable in the native desktop app on every platform. Use xdelta/G3M patches or file replacements. macOS mods targeting Windows `data.win` require matching Windows reference files.
+CSX script mods are currently unavailable in the native desktop app on every platform. Use xdelta/G3M patches or file replacements. Only `.xdelta` mods targeting Windows `data.win` require matching Windows reference files on macOS; `.g3mpatch` mods apply to the Mac `game.ios` directly.
 
 ## Why Deltamod Community?
 
@@ -170,8 +170,8 @@ layout for Arabic. See the [localization guide](./docs/LOCALIZATION.md).
 | --- | :---: | --- |
 | Windows x64 | **Stable** | Recommended platform |
 | Linux x64 | **Experimental** | Official package targets Debian-based distributions |
-| macOS Apple Silicon | **Experimental** | Native app; xdelta/G3M patches need Windows reference files; `.csx` patches are unavailable |
-| macOS Intel | **Experimental** | Native app; xdelta/G3M patches need Windows reference files |
+| macOS Apple Silicon | **Experimental** | Native app; `.g3mpatch` patches apply natively, `.xdelta` patches need Windows reference files; `.csx` patches are unavailable |
+| macOS Intel | **Experimental** | Native app; `.g3mpatch` patches apply natively, `.xdelta` patches need Windows reference files |
 | Wine / CrossOver | **Unofficial** | May work, but is not a release target |
 
 **Patch formats:** the native desktop app supports file replacements and xdelta/G3M patches. **UndertaleModTool `.csx` script mods are currently unavailable on all platforms.** The app rejects these mods before applying them or launching the game; use an xdelta/G3M or file-replacement edition when available. Bundling the upstream CLI on Windows x64, Linux x64, and Intel Macs does not enable CSX execution in the app. The upstream CLI is also unavailable for Apple Silicon.
@@ -179,7 +179,7 @@ layout for Arabic. See the [localization guide](./docs/LOCALIZATION.md).
 ### Patching on macOS
 
 - **Managed copy.** When you add DELTARUNE on a Mac, Deltamod copies only `DELTARUNE.app` into its own data folder and patches that copy. The game in `/Applications` is never changed, and Deltamod refuses to patch an installation that points at it.
-- **Windows reference files.** Most DELTARUNE mods are xdelta patches made against the Windows `data.win`. The Mac `game.ios` files are packed differently, so those patches do not apply to them directly. Under **Options → Installation → Windows reference files**, choose a Windows copy of the same game version once. Deltamod applies mods to those `data.win` files with G3MTool and installs the result in the copy as `game.ios`. Mods that only replace files, such as music, do not need them.
+- **Windows reference files.** `.g3mpatch` mods patch resources and apply to the Mac `game.ios` directly, so they never need Windows files. `.xdelta` mods are byte diffs made against the Windows `data.win` and do need it. Under **Options → Installation → Windows reference files**, pick a Windows game folder, a downloaded `.zip`/`.7z` of it, or one of the Windows installs found automatically (CrossOver/Whisky bottles, external volumes, Downloads/Desktop). Deltamod applies `.xdelta` mods to those `data.win` files with G3MTool and installs the result in the copy as `game.ios`. Mods that only replace files, such as music, do not need them.
 - **Game-version checks.** For a mod's reference-backed patch targets, required-file checks use the Windows reference copy. Other required files are checked in the managed game copy. A missing, unsafe, or mismatching reference file still blocks the mod when hash checks are enabled.
 - **Re-signing.** Changing files inside an app bundle breaks its signature, so Deltamod clears the quarantine flag on the copy and ad-hoc re-signs it with `codesign` after every patch and restore.
 - **Saves are shared.** The copy and the original game both use `~/Library/Application Support/com.tobyfox.deltarune`. Back up your saves before trying new mods.

@@ -454,6 +454,84 @@ pub fn import_game_archive<C: Fn() -> bool>(
     })
 }
 
+/// Extracts a downloaded archive into a missing private destination and
+/// publishes it only after the complete tree validates. Unlike
+/// [`import_game_archive`] no packaged executable is required; used for
+/// archives that carry only data files (Windows reference folders).
+pub fn extract_archive_bounded<C, P>(
+    archive: &Path,
+    destination: &Path,
+    limits: Limits,
+    preserve_top_level_dir: P,
+    cancelled: C,
+) -> Result<GameImportResult, ImportError>
+where
+    C: Fn() -> bool,
+    // A single top-level directory whose name is itself meaningful content
+    // (e.g. `chapter3_windows`) is kept rather than unwrapped.
+    P: Fn(&str) -> bool,
+{
+    check_cancelled(&cancelled)?;
+    validate_limits(limits)?;
+    if destination.exists() {
+        return Err(ImportError::Destination("destination already exists"));
+    }
+    let source = fs::symlink_metadata(archive).map_err(|_| ImportError::InvalidSource)?;
+    if !source.is_file()
+        || source.file_type().is_symlink()
+        || source.len() == 0
+        || source.len() > limits.max_archive_bytes
+    {
+        return Err(ImportError::InvalidSource);
+    }
+    let parent = destination
+        .parent()
+        .ok_or(ImportError::Destination("destination has no parent"))?;
+    fs::create_dir_all(parent)?;
+    let parent_metadata = fs::symlink_metadata(parent)?;
+    if !parent_metadata.is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(ImportError::Destination("destination parent is unsafe"));
+    }
+    let parent = fs::canonicalize(parent)?;
+    let format = detect_format(archive)?;
+    let inventory = inventory(archive, format, source.len(), limits, &cancelled)?;
+    let after = fs::metadata(archive)?;
+    if after.len() != source.len() || after.modified().ok() != source.modified().ok() {
+        return Err(ImportError::InvalidSource);
+    }
+    let staging = Builder::new()
+        .prefix(".archive-extract-")
+        .tempdir_in(&parent)?;
+    extract(
+        archive,
+        format,
+        &inventory,
+        staging.path(),
+        limits,
+        &cancelled,
+    )?;
+    validate_tree(staging.path(), limits, &cancelled)?;
+    let content_root = identify_content_root_preserving(staging.path(), &preserve_top_level_dir)?;
+    check_cancelled(&cancelled)?;
+    let commit_source = if content_root == staging.path() {
+        staging.keep()
+    } else {
+        let detached = Builder::new()
+            .prefix(".archive-commit-")
+            .tempdir_in(&parent)?;
+        fs::remove_dir(detached.path())?;
+        fs::rename(&content_root, detached.path())?;
+        detached.keep()
+    };
+    fs::rename(&commit_source, destination)?;
+    Ok(GameImportResult {
+        root: destination.to_path_buf(),
+        format,
+        files: inventory.files,
+        expanded_bytes: inventory.expanded,
+    })
+}
+
 pub fn import_archive_with_source<C, D>(
     archive: &Path,
     packet_root: &Path,
@@ -1185,6 +1263,13 @@ fn validate_tree(
 }
 
 fn identify_content_root(staging: &Path) -> Result<PathBuf, ImportError> {
+    identify_content_root_preserving(staging, |_| false)
+}
+
+fn identify_content_root_preserving<P: Fn(&str) -> bool>(
+    staging: &Path,
+    preserve: P,
+) -> Result<PathBuf, ImportError> {
     let entries = fs::read_dir(staging)?.collect::<Result<Vec<_>, _>>()?;
     let content = entries
         .iter()
@@ -1195,8 +1280,13 @@ fn identify_content_root(staging: &Path) -> Result<PathBuf, ImportError> {
         })
         .collect::<Vec<_>>();
     // Wrapper detection ignores Finder metadata only after the entire archive
-    // was inventoried, size-bounded, extracted and link/path-validated.
+    // was inventoried, size-bounded, extracted and link/path-validated. A lone
+    // directory the caller still recognises as content is not a wrapper.
     if content.len() == 1 && content[0].file_type()?.is_dir() {
+        let name = content[0].file_name();
+        if preserve(&name.to_string_lossy()) {
+            return Ok(staging.to_path_buf());
+        }
         Ok(content[0].path())
     } else {
         Ok(staging.to_path_buf())
@@ -2423,6 +2513,48 @@ mod tests {
         .is_err());
         assert!(!destination.exists());
         assert_eq!(fs::read_dir(parent.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn bounded_extract_unwraps_content_without_requiring_an_executable() {
+        let archive = zip_fixture(&[
+            ("game/chapter1_windows/data.win", b"FORM ch1".as_slice()),
+            ("game/data.win", b"FORM root".as_slice()),
+        ]);
+        let parent = tempfile::tempdir().unwrap();
+        let destination = parent.path().join("extracted");
+        let result = extract_archive_bounded(
+            archive.path(),
+            &destination,
+            Limits::default(),
+            |_| false,
+            || false,
+        )
+        .unwrap();
+        assert_eq!(result.root, destination);
+        assert!(result.root.join("data.win").is_file());
+        assert!(result.root.join("chapter1_windows/data.win").is_file());
+        assert!(!result.root.join("game").exists());
+        assert_eq!(fs::read_dir(parent.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn bounded_extract_preserves_a_meaningful_single_top_level_directory() {
+        // Unwrapping `chapter3_windows` would publish its data.win as the root
+        // file and lose the chapter identity the directory name carries.
+        let archive = zip_fixture(&[("chapter3_windows/data.win", b"FORM ch3".as_slice())]);
+        let parent = tempfile::tempdir().unwrap();
+        let destination = parent.path().join("extracted");
+        let result = extract_archive_bounded(
+            archive.path(),
+            &destination,
+            Limits::default(),
+            |name| name.starts_with("chapter"),
+            || false,
+        )
+        .unwrap();
+        assert!(result.root.join("chapter3_windows/data.win").is_file());
+        assert!(!result.root.join("data.win").exists());
     }
 
     #[test]
