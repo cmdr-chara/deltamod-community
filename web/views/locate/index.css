@@ -2,6 +2,7 @@
    theme background. */
 .locate-root {
     max-width: 760px;
+    margin-inline: auto;
 }
 
 .locate-panel {
