@@ -626,7 +626,6 @@ html.roaring-knight-blackout .dmodicon {
     image-rendering: pixelated;
     opacity: 0;
     transform: translate(var(--frame-offset-x), var(--frame-offset-y));
-    filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.28));
     animation: knight-arrival 420ms steps(6, end) 220ms both;
 }
 
@@ -1055,7 +1054,8 @@ body {
 }
 
 .sidebar-button.active img {
-    transform: scale(1.08);
+    width: 28px;
+    height: 28px;
     filter: brightness(1.1);
 }
 
@@ -1069,7 +1069,10 @@ body {
     height: 26px;
     object-fit: contain;
     image-rendering: pixelated;
-    transition: transform var(--motion-fast) var(--motion-ease-out);
+    transition:
+        width var(--motion-fast) var(--motion-ease-out),
+        height var(--motion-fast) var(--motion-ease-out),
+        filter var(--motion-fast) var(--motion-ease-out);
 }
 
 /* macOS-style sidebar: visible labels, not icon-only. The text comes from the
