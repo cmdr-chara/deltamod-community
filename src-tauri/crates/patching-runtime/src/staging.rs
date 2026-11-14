@@ -674,11 +674,28 @@ fn g3m_tool(runtime: &Runtime) -> Result<ToolPath, StagingError> {
 pub(super) struct BaseFile {
     pub(super) root: PathBuf,
     pub(super) relative: PathBuf,
+    pub(super) source: BaseSource,
+}
+
+/// Where a merge target's base file was resolved from.
+pub(super) enum BaseSource {
+    /// The mapped file under the game root (target name unchanged).
+    Native,
+    /// The stored reference copy of the original platform's layout.
+    Reference,
+    /// The mapped platform file standing in for a renamed target
+    /// (`game.ios` for `data.win`). Only `.g3mpatch` may use this: it
+    /// is a resource-level patch that G3MTool applies to any platform
+    /// build, so the declared `neededFiles` checksum (authored for the
+    /// original layout's bytes) is unverifiable on this base.
+    NativeFallback,
 }
 
 /// Mods name targets in the primary platform's layout (`chapter3_windows/data.win`).
 /// When the platform mapping renames the data file (Mac `game.ios`), the bytes
-/// differ, so the patch is applied to the stored Windows reference copy instead.
+/// differ. `.xdelta` is a byte diff and needs the stored Windows reference copy;
+/// `.g3mpatch` is a resource-level patch and applies to the platform's own
+/// data file when no reference copy is stored.
 pub(super) fn base_file(
     runtime: &Runtime,
     candidate: &PatchCandidate,
@@ -693,23 +710,40 @@ pub(super) fn base_file(
         return Ok(BaseFile {
             root: runtime.game_root.clone(),
             relative: mapped_relative,
+            source: BaseSource::Native,
         });
     }
-    let missing = || {
-        StagingError::for_target(
-            StagingErrorCode::ReferenceUnavailable,
-            PatchMechanism::G3m,
-            original,
-        )
-    };
-    let root = runtime.reference_root.clone().ok_or_else(missing)?;
-    match fs::symlink_metadata(root.join(&original_relative)) {
-        Ok(metadata) if metadata.is_file() => Ok(BaseFile {
-            root,
-            relative: original_relative,
-        }),
-        _ => Err(missing()),
+    if let Some(root) = runtime.reference_root.clone() {
+        if matches!(
+            fs::symlink_metadata(root.join(&original_relative)),
+            Ok(metadata) if metadata.is_file()
+        ) {
+            // Patches were authored against the original layout, and a
+            // declared checksum verifies this exact base.
+            return Ok(BaseFile {
+                root,
+                relative: original_relative,
+                source: BaseSource::Reference,
+            });
+        }
     }
+    if candidate.patch_type == PatchType::G3mPatch
+        && matches!(
+            fs::symlink_metadata(runtime.game_root.join(&mapped_relative)),
+            Ok(metadata) if metadata.is_file()
+        )
+    {
+        return Ok(BaseFile {
+            root: runtime.game_root.clone(),
+            relative: mapped_relative,
+            source: BaseSource::NativeFallback,
+        });
+    }
+    Err(StagingError::for_target(
+        StagingErrorCode::ReferenceUnavailable,
+        PatchMechanism::G3m,
+        original,
+    ))
 }
 
 pub(super) fn target_requires_reference(original: &Path, mapped: &Path) -> bool {
@@ -1409,6 +1443,86 @@ mod tests {
             )
             .unwrap(),
             b"mac"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mac_g3mpatches_apply_to_the_native_data_file_without_references() {
+        let (_root, mut runtime) = fixture("data.win", "override");
+        fs::remove_dir_all(runtime.mod_root.join("one")).unwrap();
+        install_fake_g3m(&runtime);
+        let resources = "DELTARUNE.app/Contents/Resources";
+        fs::create_dir_all(runtime.game_root.join(resources).join("chapter3_mac")).unwrap();
+        fs::write(
+            runtime
+                .game_root
+                .join(resources)
+                .join("chapter3_mac/game.ios"),
+            b"mac",
+        )
+        .unwrap();
+        runtime.platform = PatchPlatform::Darwin;
+        runtime.definition = PlatformDefinition {
+            data_files: vec![format!("{resources}/game.ios")],
+            patch_layout: "deltarune-mac-resources".into(),
+            content_root: Some(resources.into()),
+        };
+        let packet = runtime.mod_root.join("a");
+        fs::create_dir_all(&packet).unwrap();
+        fs::write(packet.join("mod.g3mpatch"), b"+a").unwrap();
+        fs::write(packet.join("__deltaID.json"), r#"{"uniqueId":"a"}"#).unwrap();
+        fs::write(
+            packet.join("modding.xml"),
+            r#"<root><patch type="g3mpatch" patch="mod.g3mpatch" to="./chapter3_windows/data.win"/></root>"#,
+        )
+        .unwrap();
+
+        // The checksum was declared for the Windows bytes; with no reference
+        // copy it cannot be verified, but it must not block a g3mpatch.
+        fs::write(
+            packet.join("meta.toml"),
+            format!(
+                "[[neededFiles]]\nfile='chapter3_windows/data.win'\nchecksum='{}'\n[metadata]\nname='Test'\n",
+                super::super::sha2_digest(b"windows"),
+            ),
+        )
+        .unwrap();
+        runtime.check_selected_legacy_mods(&["a".into()]).unwrap();
+        runtime.packet_staging_readiness("a").unwrap();
+        let staged = runtime
+            .stage_patch_outputs(&["a".into()], "stage-1", |_| {}, || false)
+            .unwrap();
+        let artifact = &staged.artifacts()[0];
+        assert_eq!(
+            artifact.target().relative_path(),
+            format!("{resources}/chapter3_mac/game.ios")
+        );
+        assert_eq!(fs::read(artifact.path()).unwrap(), b"mac+a");
+        assert_eq!(
+            fs::read(
+                runtime
+                    .game_root
+                    .join(resources)
+                    .join("chapter3_mac/game.ios")
+            )
+            .unwrap(),
+            b"mac"
+        );
+
+        // A stored reference copy stays the preferred base, since declared
+        // checksums verify those exact bytes.
+        let reference = runtime.game_root.parent().unwrap().join("reference");
+        fs::create_dir_all(reference.join("chapter3_windows")).unwrap();
+        fs::write(reference.join("chapter3_windows/data.win"), b"windows").unwrap();
+        runtime.reference_root = Some(reference);
+        runtime.check_selected_legacy_mods(&["a".into()]).unwrap();
+        let staged = runtime
+            .stage_patch_outputs(&["a".into()], "stage-2", |_| {}, || false)
+            .unwrap();
+        assert_eq!(
+            fs::read(staged.artifacts()[0].path()).unwrap(),
+            b"windows+a"
         );
     }
 

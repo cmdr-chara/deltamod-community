@@ -292,21 +292,37 @@ impl Runtime {
                         break;
                     }
                 };
-                let base = reference_patches
-                    .iter()
-                    .find(|candidate| {
-                        staging::target_requires_reference(
-                            Path::new(&relative.replace('\\', "/")),
-                            &relative_path,
-                        ) && matches!(
-                            candidate.patch_type,
-                            PatchType::Xdelta | PatchType::G3mPatch
-                        ) && normalized_hash_key(Path::new(&candidate.mapped_target), self.platform)
-                            == normalized_hash_key(&relative_path, self.platform)
+                let base_candidate = |patch_type: PatchType| {
+                    reference_patches.iter().find(|candidate| {
+                        candidate.patch_type == patch_type
+                            && staging::target_requires_reference(
+                                Path::new(&relative.replace('\\', "/")),
+                                &relative_path,
+                            )
+                            && normalized_hash_key(
+                                Path::new(&candidate.mapped_target),
+                                self.platform,
+                            ) == normalized_hash_key(&relative_path, self.platform)
                     })
+                };
+                // An xdelta patch always needs the reference base, so prefer it
+                // over a g3mpatch candidate that could fall back to the
+                // platform's own data file.
+                let base = base_candidate(PatchType::Xdelta)
+                    .or_else(|| base_candidate(PatchType::G3mPatch))
                     .map(|candidate| staging::base_file(self, candidate));
                 let (hash_root, hash_relative) = match base {
-                    Some(Ok(base)) => (base.root, base.relative),
+                    Some(Ok(base)) => {
+                        if matches!(base.source, staging::BaseSource::NativeFallback) {
+                            // A g3mpatch applied to the platform's own data
+                            // file: the declared checksum names the original
+                            // layout's bytes, which this file does not share,
+                            // so the entry cannot be verified here. G3MTool
+                            // validates the patch against the base instead.
+                            continue;
+                        }
+                        (base.root, base.relative)
+                    }
                     Some(Err(error)) => {
                         invalid_reason = Some(error.to_string());
                         break;
