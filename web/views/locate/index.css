@@ -226,9 +226,7 @@ input[type="checkbox"] {
 
 .importProgress {
     margin-top: 14px;
-    padding: 12px;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.72);
+    padding: 4px 0 0;
 }
 
 .importProgress[hidden] {

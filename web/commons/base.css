@@ -370,7 +370,7 @@ th {
     min-height: 118px;
     gap: 16px;
     padding: 20px 26px;
-    background: var(--panel-bg-strong);
+    background: transparent;
 }
 
 .empty-state-icon {

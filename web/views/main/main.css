@@ -80,6 +80,9 @@ a {
 }
 
 .patch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-inline-start: auto;
 }
 
@@ -105,16 +108,6 @@ a {
 .patch-sort-control select {
   width: 100%;
   margin: 0;
-}
-
-.patch-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 999px;
-  background: var(--panel-bg-strong);
-  backdrop-filter: blur(var(--panel-blur)) brightness(0.76);
 }
 
 .patch-actions > .vanilla-launch {

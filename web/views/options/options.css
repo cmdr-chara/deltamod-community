@@ -338,7 +338,7 @@ body .viewport .options-page .cat > button:not(.selected) {
     text-align: left;
     border: 1px solid transparent;
     border-radius: 10px;
-    background: var(--control-bg) !important;
+    background: transparent !important;
     transition:
         background-color var(--motion-fast) var(--motion-ease-out),
         border-color var(--motion-fast) var(--motion-ease-out),
@@ -351,8 +351,8 @@ body .viewport .options-page .cat > button:not(.selected) {
 }
 
 body .viewport .options-page .cat > button:not(.selected):hover {
-    border-color: var(--theme-color-point3);
-    background: var(--control-bg-hover) !important;
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.06) !important;
     color: white;
     box-shadow: none;
 }
