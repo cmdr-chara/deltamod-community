@@ -64,11 +64,9 @@
     align-items: center;
     gap: 20px;
     overflow: visible;
-    padding: 18px;
+    padding: 18px 0;
     border: 0;
-    border-radius: var(--panel-radius);
-    border: 1px solid var(--panel-border);
-    background: var(--credits-surface);
+    background: transparent;
     backdrop-filter: none;
 }
 
@@ -113,9 +111,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-content: stretch;
     overflow: hidden;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--panel-radius);
-    background: var(--credits-surface);
+    border: 0;
+    border-inline-start: 1px solid var(--panel-divider);
+    background: transparent;
     backdrop-filter: none;
 }
 
