@@ -130,13 +130,19 @@ function addRangeOption(name, description, {
     output.className = 'setting-range-value';
     output.htmlFor = input.id;
 
+    const updateFill = () => {
+        const numericValue = Number(input.value);
+        input.style.setProperty('--fill', `${max === min ? 0 : ((numericValue - min) / (max - min)) * 100}%`);
+    };
     const updateValue = () => {
         const numericValue = Number(input.value);
         output.value = `${uiNumber(numericValue)}${unit}`;
         output.textContent = output.value;
+        updateFill();
         changeHandler(numericValue);
     };
     input.addEventListener('input', updateValue);
+    updateFill();
     uiRender(output, () => `${uiNumber(Number(input.value))}${unit}`);
 
     control.append(input, output);
@@ -247,6 +253,7 @@ async function addButton(name, description, click, buttonText, enabled = true, d
     const { td: tdInput, control } = createSettingControlCell();
 
     const button = document.createElement('button');
+    button.classList.add('secondary-action');
     uiRender(button, () => resolveText(buttonText));
     button.addEventListener('click', click);
     control.appendChild(button);

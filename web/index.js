@@ -587,6 +587,12 @@ function playRoaringKnightTransition() {
             slash.setAttribute('aria-hidden', 'true');
             slash.style.setProperty('--cut-angle', `${[-28, 32, -8][cut]}deg`);
             overlay.appendChild(slash);
+            overlay.classList.remove('is-shaking');
+            void overlay.offsetWidth;
+            overlay.classList.add('is-shaking');
+            themeTransitionPhaseTimers.push(setTimeout(() => {
+                overlay.classList.remove('is-shaking');
+            }, 180));
             let frame = 0;
             const advance = () => {
                 if (!overlay.isConnected) return;
@@ -599,6 +605,21 @@ function playRoaringKnightTransition() {
             advance();
         }, delay));
     });
+
+    // Impact frame synced with the final hit SFX, just before the reveal:
+    // one color inversion on the Knight plus a single controlled flash —
+    // deliberately a single flash, not a strobe, for photosensitivity.
+    themeTransitionPhaseTimers.push(setTimeout(() => {
+        if (!overlay.isConnected) return;
+        knight.classList.add('is-impact');
+        themeTransitionPhaseTimers.push(setTimeout(() => {
+            knight.classList.remove('is-impact');
+        }, 240));
+        const flash = document.createElement('span');
+        flash.className = 'theme-transition-flash is-lit';
+        flash.setAttribute('aria-hidden', 'true');
+        overlay.appendChild(flash);
+    }, 2020));
 
     themeTransitionReleaseTimer = setTimeout(() => {
         if (!overlay.isConnected) return;

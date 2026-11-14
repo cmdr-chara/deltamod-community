@@ -237,6 +237,15 @@
                 'aria-label',
                 t('theme_background_preview', '{0} background preview', theme.name)
             );
+            const inUseBadge = document.createElement('span');
+            inUseBadge.className = 'theme-inuse-badge';
+            inUseBadge.appendChild(staticIcon('check', '14px'));
+            const inUseLabel = document.createElement('span');
+            inUseLabel.textContent = t('theme_in_use', 'In use');
+            inUseBadge.appendChild(inUseLabel);
+            inUseBadge.hidden = theme.id !== selectedTheme;
+            preview.appendChild(inUseBadge);
+
             card.appendChild(preview);
 
             const content = document.createElement('div');
@@ -371,6 +380,8 @@
                         ? t('theme_in_use', 'In use')
                         : t('theme_use', 'Use theme');
                     candidateButton.setAttribute('aria-pressed', String(active));
+                    const badge = candidate.querySelector('.theme-inuse-badge');
+                    if (badge) badge.hidden = !active;
                     const replay = candidate.querySelector('.theme-replay-event');
                     if (replay) replay.hidden = !active;
                 }
@@ -494,6 +505,8 @@
                 selectButton.textContent = selectButton.disabled
                     ? t('theme_in_use', 'In use')
                     : t('theme_use', 'Use theme');
+                const inUseLabel = card.querySelector('.theme-inuse-badge span:last-child');
+                if (inUseLabel) inUseLabel.textContent = t('theme_in_use', 'In use');
                 const deleteLabel = card.querySelector('.theme-delete-button span:last-child');
                 if (deleteLabel) deleteLabel.textContent = t('theme_delete', 'Delete');
                 card.dataset.search = themeSearchText(theme);
