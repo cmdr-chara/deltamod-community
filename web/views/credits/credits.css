@@ -5,7 +5,6 @@
     width: min(1240px, 100%);
     padding: 26px;
     border: 1px solid var(--panel-border);
-    border-top: 2px solid var(--theme-color);
     border-radius: var(--panel-radius);
     background: rgba(9, 9, 12, 0.94);
     margin: 0 auto;
@@ -36,18 +35,16 @@
 .credits-kicker {
     color: var(--credits-accent);
     font-family: "Pixel", sans-serif;
-    font-size: 15px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    font-size: 16px;
 }
 
 .credits-version {
     flex: 0 0 auto;
-    padding: 8px 10px;
-    border: 0;
+    padding: 7px 10px;
+    border: 1px solid var(--panel-divider);
     border-radius: var(--control-radius);
-    background: rgba(0, 0, 0, 0.36);
-    color: rgba(255, 255, 255, 0.82);
+    background: transparent;
+    color: var(--muted-text);
 }
 
 .credits-lead-grid {
@@ -73,7 +70,7 @@
 .maintainer-avatar {
     width: 124px;
     height: 124px;
-    border: 0;
+    border: 2px solid color-mix(in srgb, var(--theme-color) 55%, transparent);
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.3);
     object-fit: cover;
@@ -115,6 +112,33 @@
     border-inline-start: 1px solid var(--panel-divider);
     background: transparent;
     backdrop-filter: none;
+}
+
+/* The fork's own story — DELTARUNE → Deltamod → Community — shown as one
+   quiet lineage strip: names only, no diagram chrome. */
+.credits-lineage {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    padding: 14px 15px;
+    border-bottom: 1px solid var(--panel-divider);
+    font-family: "Pixel", sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+}
+
+.lineage-node {
+    color: rgba(255, 255, 255, 0.58);
+}
+
+.lineage-node.is-current {
+    color: var(--credits-accent);
+}
+
+.lineage-arrow {
+    color: rgba(255, 255, 255, 0.28);
 }
 
 .build-fact {
