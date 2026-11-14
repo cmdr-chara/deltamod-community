@@ -793,7 +793,7 @@ html.roaring-knight-blackout .dmodicon {
 :root {
     --topbar-height: 40px;
     --sidebar-size: 50px;
-    --rail-width: 70px;
+    --rail-width: 86px;
 }
 
 body {
@@ -907,7 +907,7 @@ body {
     border: 1px solid transparent;
     border-radius: 7px;
     background: transparent !important;
-    color: rgba(255, 255, 255, 0.72);
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .window-control-icon {
@@ -924,14 +924,23 @@ body {
 }
 
 .bar-button:hover {
-    border-color: color-mix(in srgb, var(--theme-color) 42%, rgba(255, 255, 255, 0.16));
-    background: color-mix(in srgb, var(--theme-color) 24%, rgba(255, 255, 255, 0.07)) !important;
-    color: white;
+    color: #101014;
+}
+
+/* macOS traffic-light language on hover: amber / green / red. */
+.minimize-button:hover {
+    border-color: rgba(244, 190, 80, 0.6);
+    background: rgba(244, 190, 80, 0.95) !important;
+}
+
+.maximize-button:hover {
+    border-color: rgba(102, 196, 86, 0.6);
+    background: rgba(97, 200, 88, 0.95) !important;
 }
 
 .close-button:hover {
     border-color: rgba(255, 107, 107, 0.58);
-    background: rgba(184, 38, 45, 0.92) !important;
+    background: rgba(236, 83, 88, 0.95) !important;
 }
 
 .bar-button:active {
@@ -960,7 +969,7 @@ body {
 .sidebar > div,
 .sidebar-buttons {
     display: flex;
-    width: 50px;
+    width: 64px;
     margin: 0;
     padding: 0;
     align-items: center;
@@ -971,13 +980,15 @@ body {
     position: relative;
     display: flex;
     flex: 0 0 auto;
-    width: 46px;
-    height: 46px;
+    width: 62px;
+    min-height: 58px;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 8px;
+    gap: 3px;
+    padding: 6px 3px;
     border: 0;
-    border-radius: 14px;
+    border-radius: var(--control-radius);
     background: transparent !important;
     color: white;
     cursor: pointer;
@@ -994,8 +1005,15 @@ body {
 }
 
 .sidebar-button.active {
-    background: var(--theme-color-point2) !important;
-    box-shadow: inset 3px 0 0 var(--theme-color);
+    background: color-mix(in srgb, var(--theme-color) 20%, rgba(0, 0, 0, 0.4)) !important;
+    box-shadow:
+        inset 4px 0 0 var(--theme-color),
+        inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 45%, transparent);
+}
+
+.sidebar-button.active img {
+    transform: scale(1.08);
+    filter: brightness(1.1);
 }
 
 .sidebar-button[data-disabled="true"] {
@@ -1009,6 +1027,27 @@ body {
     object-fit: contain;
     image-rendering: pixelated;
     transition: transform var(--motion-fast) var(--motion-ease-out);
+}
+
+/* macOS-style sidebar: visible labels, not icon-only. The text comes from the
+   already-localized aria-label, so it follows the selected language for free. */
+.sidebar-button::before {
+    display: block;
+    max-width: 100%;
+    order: 2;
+    color: rgba(255, 255, 255, 0.66);
+    content: attr(aria-label);
+    font-family: "Calibri", sans-serif;
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+
+.sidebar-button:hover::before,
+.sidebar-button.active::before {
+    color: rgba(255, 255, 255, 0.92);
 }
 
 .sidebar-button:hover img,

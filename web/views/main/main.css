@@ -75,7 +75,12 @@ a {
   align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
+}
+
+.patch-actions {
+  margin-inline-start: auto;
 }
 
 .patch-toolbar-copy {
