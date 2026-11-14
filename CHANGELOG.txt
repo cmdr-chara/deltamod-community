@@ -1,3 +1,12 @@
+# Deltamod Community 2.1.7
+
+Released 2026-11-14.
+
+## Changes
+
+- staging test: make same-content replacement deterministic via rename (`9effbdf`).
+- Merge PR #180: deterministic same-content replacement in staging verify test (`3f629dc`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
