@@ -1,3 +1,15 @@
+# Deltamod Community 2.1.8
+
+Released 2026-11-15.
+
+## Changes
+
+- ci: restore macOS release lanes (x64 + arm64) (`b1f04ed`).
+- Merge PR #181: restore macOS release lanes (x64 + arm64) (`021a59f`).
+- deps: bump vulnerable Rust dependencies in src-tauri (`f675a8f`).
+- test: stop fake-clock jumps in knight awakening spec (`f231621`).
+- Merge PR #182: deps: bump vulnerable Rust dependencies in src-tauri (`26e8730`).
+
 # Unreleased — Linux QA fixes
 
 - Preserve original files when consecutive patch sessions target different files,
