@@ -44,37 +44,46 @@ test('awakening uses one crisp sprite, three distinct cuts and a short reveal', 
     await setup(page);
     await page.clock.install();
     await page.evaluate(() => playRoaringKnightTransition());
-    await expect(page.locator('#theme-transition-overlay')).toHaveAttribute('aria-label', 'Roaring Knight awakening');
-    await expect(page.locator('#theme-transition-skip')).toHaveText('Skip · Esc');
-    await page.locator('#theme-transition-skip').focus();
+    // Auto-waiting assertions (expect.poll, toHaveCount, toBeFocused, ...) advance the
+    // fake clock while polling; on a slow runner a single wait jumps past the cut
+    // timers and the countdown assertions below can never observe the 1->2->3
+    // sequence. Inside the timed region every check must be synchronous.
+    const overlay = page.locator('#theme-transition-overlay');
+    const skip = page.locator('#theme-transition-skip');
+    const knight = page.locator('.theme-transition-knight');
+    const cuts = page.locator('.theme-transition-rift.is-cut');
+    expect(await overlay.getAttribute('aria-label')).toBe('Roaring Knight awakening');
+    expect((await skip.textContent()).trim()).toBe('Skip · Esc');
+    await skip.focus();
     const sameTransition = await page.evaluate(async () => {
-        const overlay = document.getElementById('theme-transition-overlay');
-        const skip = document.getElementById('theme-transition-skip');
+        const overlayNode = document.getElementById('theme-transition-overlay');
+        const skipNode = document.getElementById('theme-transition-skip');
         await window.Localization.setLanguage('it');
-        return overlay === document.getElementById('theme-transition-overlay')
-            && skip === document.getElementById('theme-transition-skip');
+        return overlayNode === document.getElementById('theme-transition-overlay')
+            && skipNode === document.getElementById('theme-transition-skip');
     });
     expect(sameTransition).toBe(true);
-    await expect(page.locator('#theme-transition-overlay')).toHaveAttribute('aria-label', italian.shell_knight_awakening);
-    await expect(page.locator('#theme-transition-skip')).toHaveText(italian.shell_skip);
-    await expect(page.locator('#theme-transition-skip')).toBeFocused();
+    expect(await overlay.getAttribute('aria-label')).toBe(italian.shell_knight_awakening);
+    expect((await skip.textContent()).trim()).toBe(italian.shell_skip);
+    expect(await skip.evaluate(node => node === document.activeElement)).toBe(true);
     await page.clock.runFor(700);
-    await expect(page.locator('.theme-transition-knight')).toHaveCount(1);
-    await expect(page.locator('.theme-transition-fountain, .theme-transition-sigil, .theme-transition-particles, .theme-transition-soul, .theme-transition-flight')).toHaveCount(0);
-    expect(await page.locator('.theme-transition-knight').evaluate(node => getComputedStyle(node).filter)).toBe('none');
-    await expect.poll(() => page.locator('.theme-transition-knight').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    expect(await knight.count()).toBe(1);
+    expect(await page.locator('.theme-transition-fountain, .theme-transition-sigil, .theme-transition-particles, .theme-transition-soul, .theme-transition-flight').count()).toBe(0);
+    expect(await knight.evaluate(node => getComputedStyle(node).filter)).toBe('none');
+    await knight.evaluate(node => node.decode());
+    expect(await knight.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
     await page.evaluate(() => document.getAnimations().forEach(animation => { animation.currentTime = 700; animation.pause(); }));
     await page.screenshot({path: info.outputPath('knight-arrival.png')});
     await page.clock.runFor(300);
-    await expect(page.locator('.theme-transition-rift.is-cut')).toHaveCount(1);
+    expect(await cuts.count()).toBe(1);
     await page.clock.runFor(370);
-    await expect(page.locator('.theme-transition-rift.is-cut')).toHaveCount(2);
+    expect(await cuts.count()).toBe(2);
     await page.clock.runFor(370);
-    await expect(page.locator('.theme-transition-rift.is-cut')).toHaveCount(3);
+    expect(await cuts.count()).toBe(3);
     await page.evaluate(() => {
-        const cuts = [...document.querySelectorAll('.theme-transition-rift.is-cut')];
+        const cutNodes = [...document.querySelectorAll('.theme-transition-rift.is-cut')];
         document.getAnimations().forEach(animation => {
-            const cut = cuts.indexOf(animation.effect?.target);
+            const cut = cutNodes.indexOf(animation.effect?.target);
             animation.currentTime = cut < 0 ? 1740 : 1740 - ROARING_KNIGHT_TRANSITION.cutTimes[cut];
             animation.pause();
         });
@@ -82,26 +91,27 @@ test('awakening uses one crisp sprite, three distinct cuts and a short reveal', 
     await page.screenshot({path: info.outputPath('knight-three-cuts.png')});
     await page.clock.runFor(460);
     expect(await page.evaluate(() => window.__completed)).toBe(1);
-    await expect(page.locator('#theme-transition-overlay')).toHaveClass(/is-releasing/);
+    expect(await overlay.getAttribute('class') ?? '').toMatch(/is-releasing/);
     await page.clock.runFor(600);
-    await expect(page.locator('#theme-transition-overlay')).toHaveCount(0);
-    await expect(page.locator('.theme-replay-event')).toBeFocused();
+    expect(await overlay.count()).toBe(0);
+    expect(await page.evaluate(() => document.activeElement?.classList.contains('theme-replay-event'))).toBe(true);
 });
 test('Escape cancels every phase and replay creates only one event', async ({page}) => {
     await setup(page);
     await page.clock.install();
     await page.evaluate(() => { playRoaringKnightTransition(); playRoaringKnightTransition(); });
-    await expect(page.locator('#theme-transition-overlay')).toHaveCount(1);
+    const overlay = page.locator('#theme-transition-overlay');
+    expect(await overlay.count()).toBe(1);
     await page.keyboard.press('Escape');
     await page.clock.runFor(8000);
-    await expect(page.locator('#theme-transition-overlay')).toHaveCount(0);
+    expect(await overlay.count()).toBe(0);
     expect(await page.evaluate(() => window.__completed)).toBe(1);
     expect(await page.evaluate(() => themeTransitionPhaseTimers.length)).toBe(0);
     await page.evaluate(() => replayRoaringKnightTransition());
-    await expect(page.locator('#theme-transition-overlay')).toHaveCount(1);
+    expect(await overlay.count()).toBe(1);
     await page.locator('#theme-transition-skip').click();
     await page.clock.runFor(3000);
-    await expect(page.locator('#theme-transition-overlay')).toHaveCount(0);
+    expect(await overlay.count()).toBe(0);
     expect(await page.evaluate(() => window.__completed)).toBe(2);
     expect(await page.evaluate(() => themeTransitionPhaseTimers.length)).toBe(0);
 });
